@@ -23,8 +23,8 @@ import WeatherStamp from './tools/WeatherStamp/index.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const {
-  DEFAULT_MODEL = 'codestral',
-  DEFAULT_EMBEDDING_MODEL = 'all-minilm',
+  DEFAULT_MODEL = 'codestral-cool',
+  DEFAULT_EMBEDDING_MODEL = 'nomic-embed-text',
   MAIL_HOST,
   MAIL_NAME,
   MAIL_FROM_NAME,
@@ -61,10 +61,9 @@ const DEFAULT_TOOLS = {
  */
 
 const DEFAULT_TOOL_CHAIN = [
-  'JSCodeCreator',
+  'JSCodeFileCreator',
   'CodeFileIntegrator',
   'VariableEvaluator',
-  'NoFileDeviationEvaluator',
   'CompletenessEvaluator',
   'EndResponseEvaluator'
 ];
@@ -100,7 +99,7 @@ class VectorStore {
     this.multipliers.push(priorityMultiplier);
   }
 
-  search (queryEmbedding, topK = 1) {
+  search (queryEmbedding, topK = 3) {
     const similarities = this.embeddings.map((embedding, i) => {
       const rawSimilarity = VectorStore.getCosineSimilarity(queryEmbedding, embedding);
 
@@ -159,21 +158,59 @@ class RetrievalModel {
 
   async createVectorStore (files, priorityMultiplier = 1) {
     const store = new VectorStore();
+    const rawTexts = await this.readFiles(files);
 
-    const texts = await this.readFiles(files);
+    const targetChunkSize = 1000;
+    const chunkOverlap = 200;
 
-    for (const text of texts) {
-      if (!text || !text.trim()) continue;
+    for (const fullText of rawTexts) {
+      if (!fullText || !fullText.trim()) continue;
+      
+      const lines = fullText.split('\n');
+      const chunks = [];
+      let currentChunkLines = [];
+      let currentLength = 0;
+      let openBrackets = 0;
 
-      const embedding = await this.embed(text);
+      for (let index = 0; index < lines.length; index++) {
+        const line = lines[index];
+        currentChunkLines.push(line);
+        currentLength += line.length + 1;
 
-      if (embedding && Array.isArray(embedding)) {
-        store.add(text, embedding, priorityMultiplier);
+        const opens = (line.match(/[\{\[\(]/g) || []).length;
+        const closes = (line.match(/[\}\]\)]/g) || []).length;
+        
+        openBrackets += opens - closes;
+
+        if (currentLength >= targetChunkSize && openBrackets <= 0) {
+          chunks.push(currentChunkLines.join('\n'));
+
+          const overlapCount = Math.min(currentChunkLines.length, Math.ceil(chunkOverlap / 40));
+          
+          currentChunkLines = currentChunkLines.slice(-overlapCount);
+          currentLength = currentChunkLines.reduce((acc, l) => acc + l.length + 1, 0);
+        }
+      }
+
+      if (currentChunkLines.length > 0) {
+        chunks.push(currentChunkLines.join('\n'));
+      }
+
+      for (const chunk of chunks) {
+        const trimmedChunk = chunk.trim();
+        if (!trimmedChunk) continue;
+
+        const embedding = await this.embed(trimmedChunk);
+
+        if (embedding && Array.isArray(embedding)) {
+          store.add(trimmedChunk, embedding, priorityMultiplier);
+        }
       }
     }
 
     return store;
   }
+
 
   async loadDocuments (dirPath) {
     const files = [];
@@ -217,18 +254,47 @@ class RetrievalModel {
       body: JSON.stringify({
         model,
         messages,
-        stream: false,
+        stream: true,
         options: {
           temperature: 0
         }
       }),
     });
 
-    const { message } = await response.json();
+    if (!response.body) {
+      throw new Error('Failed to read streaming body from model server.');
+    }
 
-    const { content = '' } = message || {};
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let content = '';
 
-    console.log('\n\nModel Output:\n\n', content);
+    process.stdout.write('\n\nModel Output:\n\n');
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunkText = decoder.decode(value, { stream: true });
+      const lines = chunkText.split('\n');
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+
+        try {
+          const parsed = JSON.parse(line);
+          if (parsed.message?.content) {
+            const token = parsed.message.content;
+            content += token;
+            process.stdout.write(token);
+          }
+        } catch (e) {
+
+        }
+      }
+    }
+
+    process.stdout.write('\n');
 
     return content;
   }
@@ -306,7 +372,7 @@ class Agent extends RetrievalModel {
     try {
       const tasksContent = await fs.readFile(path.join(__dirname, 'tasks.txt'), 'utf-8');
 
-      const tasks = tasksContent.split('\n').filter(task => task.trim() !== '');
+            const tasks = tasksContent.split('\n').filter(task => task.trim() !== '');
 
       if (tasks.length === 0) {
         console.log('All tasks complete!');
@@ -341,7 +407,7 @@ class Agent extends RetrievalModel {
   }
 
   async extractFilenameAndTask (topTask) {
-    const componentMatch = topTask.match(/\[([^\]]+)\]/);
+    const componentMatch = topTask.match(/\[File:\s*([^\]]+)\]/);
 
     if (!componentMatch) {
       console.warn(`No component name found in task: ${topTask}`);
