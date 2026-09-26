@@ -70,7 +70,7 @@ const DEFAULT_TOOL_CHAIN = [
  */
 
 class VectorStore {
-  static getCosineSimilarity (a, b) {
+  static getCosineSimilarity(a, b) {
     let dot = 0, magA = 0, magB = 0;
 
     for (let i = 0; i < a.length; i++) {
@@ -82,23 +82,22 @@ class VectorStore {
     return dot / (Math.sqrt(magA) * Math.sqrt(magB));
   }
 
-  constructor () {
+  constructor() {
     this.embeddings = [];
     this.texts = [];
     this.multipliers = [];
   }
 
-  add (text, embedding, priorityMultiplier = 1) {
+  add(text, embedding, priorityMultiplier = 1) {
     this.embeddings.push(embedding);
     this.texts.push(text);
     this.multipliers.push(priorityMultiplier);
   }
 
-  search (queryEmbedding, topK = 2) {
+  search(queryEmbedding, topK = 3) {
     const similarities = this.embeddings.map((embedding, i) => {
       const rawSimilarity = VectorStore.getCosineSimilarity(queryEmbedding, embedding);
       return { i, similarity: rawSimilarity * this.multipliers[i] };
-
     });
 
     similarities.sort((a, b) => b.similarity - a.similarity);
@@ -116,7 +115,7 @@ class VectorStore {
  */
 
 class RetrievalModel {
-  constructor (config = {}) {
+  constructor(config = {}) {
     this.MODEL_BASE_URL = config.MODEL_BASE_URL || 'http://localhost:11434/api';
     this.MODEL_EMBED_URL = `${this.MODEL_BASE_URL}/embed`;
     this.MODEL_CHAT_URL = `${this.MODEL_BASE_URL}/chat`;
@@ -124,7 +123,7 @@ class RetrievalModel {
     this.EMBEDDING_MODEL = config.EMBEDDING_MODEL || DEFAULT_EMBEDDING_MODEL;
   }
 
-  async embed (text, model = this.EMBEDDING_MODEL) {
+  async embed(text, model = this.EMBEDDING_MODEL) {
     try {
       const response = await fetch(this.MODEL_EMBED_URL, {
         method: 'POST',
@@ -148,7 +147,7 @@ class RetrievalModel {
     }
   }
 
-  async createVectorStore (files, priorityMultiplier = 1) {
+  async createVectorStore(files, priorityMultiplier = 1) {
     const store = new VectorStore();
 
     const rawTexts = await this.readFiles(files);
@@ -158,6 +157,9 @@ class RetrievalModel {
 
     for (const fullText of rawTexts) {
       if (!fullText || !fullText.trim()) continue;
+
+      // Skip files that do not start with the required header
+      if (!fullText.startsWith('/** * <!NEW FILE>')) continue;
 
       const lines = fullText.split('\n');
       const chunks = [];
@@ -207,7 +209,7 @@ class RetrievalModel {
     return store;
   }
 
-  async loadDocuments (dirPath) {
+  async loadDocuments(dirPath) {
     const files = [];
 
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
@@ -227,7 +229,7 @@ class RetrievalModel {
     return files;
   }
 
-  async readFiles (files) {
+  async readFiles(files) {
     return Promise.all(
       files.map(async file => {
         try {
@@ -241,7 +243,7 @@ class RetrievalModel {
     );
   }
 
-  async chat (messages, model = this.MODEL) {
+  async chat(messages, model = this.MODEL) {
     console.log('\n\nModel Input:\n\n', messages[messages.length - 1]?.content);
 
     const response = await fetch(this.MODEL_CHAT_URL, {
@@ -308,7 +310,7 @@ class RetrievalModel {
 class Agent extends RetrievalModel {
   static tools = { ...DEFAULT_TOOLS };
 
-  constructor (config = {}) {
+  constructor(config = {}) {
     super(config);
 
     this.tools = { ...Agent.tools, ...(config.tools || {}) };
@@ -317,7 +319,7 @@ class Agent extends RetrievalModel {
     this.loadAndExec();
   }
 
-  async load () {
+  async load() {
     console.log('Loading vector stores...');
 
     const lowPriorityFiles = await this.loadDocuments(path.join(__dirname, 'buckets/background'));
@@ -336,7 +338,7 @@ class Agent extends RetrievalModel {
     console.log('Done.');
   }
 
-  async readTopTask () {
+  async readTopTask() {
     try {
       const tasksContent = await fs.readFile(path.join(__dirname, 'tasks.txt'), 'utf-8');
 
@@ -363,7 +365,7 @@ class Agent extends RetrievalModel {
     }
   }
 
-  async removeCompletedTask (tasks) {
+  async removeCompletedTask(tasks) {
     const updatedTasks = tasks.slice(1).join('\n\n');
 
     await fs.writeFile(path.join(__dirname, 'tasks.txt'), updatedTasks);
@@ -371,9 +373,9 @@ class Agent extends RetrievalModel {
     await fs.writeFile(path.join(__dirname, 'task.txt'), '');
   }
 
-  async extractFilesAndTask (topTask) {
-    const filesMatch = topTask.match(/\[Files:\s*([^\]]+)\]/);
-    const taskMatch = topTask.match(/\[Task:\s*([^\]]+)\]/);
+  async extractFilesAndTask(topTask) {
+    const filesMatch = topTask.match(/\[FILES:\s*([^\]]+)\]/i);
+    const taskMatch = topTask.match(/\[TASK:\s*([^\]]+)\]/i);
 
     if (!filesMatch || !taskMatch) {
       console.warn(`No files or task found in task: ${topTask}`);
@@ -387,33 +389,34 @@ class Agent extends RetrievalModel {
     return { files, task };
   }
 
-  async extractFilePathFromContent (fileContent) {
-    const pathMatch = fileContent.match(/Path:\s*"([^"]+)"\s*/);
+  async extractMetadataFromContent(fileContent) {
+    const metadata = {
+      NAME: fileContent.match(/NAME:\s*"([^"]+)"\s*/)?.[1]?.trim(),
+      TYPE: fileContent.match(/TYPE:\s*"([^"]+)"\s*/)?.[1]?.trim(),
+      PURPOSE: fileContent.match(/PURPOSE:\s*"([^"]+)"\s*/)?.[1]?.trim(),
+      FILE_PATH: fileContent.match(/FILE_PATH:\s*"([^"]+)"\s*/)?.[1]?.trim(),
+      DEPENDENCIES: fileContent.match(/DEPENDENCIES:\s*"([^"]+)"\s*/)?.[1]?.trim(),
+      ENVIRONMENT: fileContent.match(/ENVIRONMENT:\s*"([^"]+)"\s*/)?.[1]?.trim(),
+      NOTES: fileContent.match(/NOTES:\s*"([^"]+)"\s*/)?.[1]?.trim(),
+    };
 
-    if (!pathMatch) {
-      console.warn('No path found in file content.');
-
-      return null;
-    }
-
-    return pathMatch[1].trim();
+    return metadata;
   }
 
-  async branchAndCommit (files, task, currentSolution) {
+  async branchAndCommit(files, task, currentSolution) {
     for (const file of files) {
       const filePath = path.join(__dirname, 'buckets/focus', file);
 
       const fileContent = await fs.readFile(filePath, 'utf-8');
 
-      const extractedPath = await this.extractFilePathFromContent(fileContent);
+      const metadata = await this.extractMetadataFromContent(fileContent);
 
-      if (!extractedPath) {
-        console.warn(`No path found in file: ${file}`);
-
+      if (!metadata.FILE_PATH) {
+        console.warn(`No FILE_PATH found in file: ${file}`);
         continue;
       }
 
-      const fullPath = path.join(__dirname, extractedPath);
+      const fullPath = path.join(__dirname, metadata.FILE_PATH);
       const dirPath = path.dirname(fullPath);
 
       await fs.mkdir(dirPath, { recursive: true });
@@ -449,7 +452,7 @@ class Agent extends RetrievalModel {
     });
   }
 
-  async resetGitState () {
+  async resetGitState() {
     return new Promise((resolve, reject) => {
       exec(`git stash && git checkout master && git pull`, (error, stdout, stderr) => {
         if (error) {
@@ -463,7 +466,7 @@ class Agent extends RetrievalModel {
     });
   }
 
-  async exec () {
+  async exec() {
     const { topTask, tasks } = await this.readTopTask();
 
     const { files, task } = await this.extractFilesAndTask(topTask);
@@ -496,7 +499,7 @@ class Agent extends RetrievalModel {
     }
   }
 
-  async query (input) {
+  async query(input) {
     let currentSolution = '';
     let lastResponse = '';
 
@@ -545,7 +548,7 @@ class Agent extends RetrievalModel {
 
 // Application
 
-async function main () {
+async function main() {
   new Agent();
 }
 

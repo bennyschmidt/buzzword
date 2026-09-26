@@ -1,5 +1,5 @@
-1. [File: index.html] Add "hello world" to the <body>.
+1. [FILE: index.html] Add "hello world" to the <body>.
 
-2. [File: index.html] Make all the text red.
+2. [FILE: index.html] Make all the text red.
 
-3. [File: index.html] Make a "Rick Roll" YouTube player move around the screen infinitely.
+3. [FILE: index.html] Make a "Rick Roll" YouTube player move around the screen infinitely.
