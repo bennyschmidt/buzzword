@@ -23,7 +23,7 @@ import WeatherStamp from './tools/WeatherStamp/index.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const {
-  DEFAULT_MODEL = 'codestral-cool',
+  DEFAULT_MODEL = 'coder-14',
   DEFAULT_EMBEDDING_MODEL = 'nomic-embed-text',
 } = process.env;
 

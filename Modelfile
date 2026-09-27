@@ -1,3 +1,2 @@
-FROM codestral
+FROM qwen2.5-coder:14b
 PARAMETER temperature 0
-

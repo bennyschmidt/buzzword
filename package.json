@@ -4,7 +4,7 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "start": "ollama create codestral-cool -f ./Modelfile && node index",
+    "start": "ollama create coder-14 -f ./Modelfile && node index",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
