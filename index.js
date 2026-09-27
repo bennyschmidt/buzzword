@@ -242,8 +242,8 @@ class RetrievalModel {
           return await fs.readFile(file, 'utf-8');
         } catch (err) {
           console.warn(`Failed to read ${file}: ${err.message}`);
-          return '';
 
+          return '';
         }
       })
     );
@@ -419,42 +419,47 @@ class Agent extends RetrievalModel {
     return { files, task, fullTask };
   }
 
-  async extractMetadataFromContent (fileContent) {
-    const metadata = {
-      NAME: fileContent.match(/NAME:\s*"([^"]+)"\s*/)?.[1]?.trim(),
-      TYPE: fileContent.match(/TYPE:\s*"([^"]+)"\s*/)?.[1]?.trim(),
-      PURPOSE: fileContent.match(/PURPOSE:\s*"([^"]+)"\s*/)?.[1]?.trim(),
-      FILE_PATH: fileContent.match(/FILE_PATH:\s*"([^"]+)"\s*/)?.[1]?.trim(),
-      DEPENDENCIES: fileContent.match(/DEPENDENCIES:\s*"([^"]+)"\s*/)?.[1]?.trim(),
-      ENVIRONMENT: fileContent.match(/ENVIRONMENT:\s*"([^"]+)"\s*/)?.[1]?.trim(),
-      NOTES: fileContent.match(/NOTES:\s*"([^"]+)"\s*/)?.[1]?.trim(),
-    };
-
-    return metadata;
-  }
-
   async branchAndCommit (files, task, currentSolution) {
     const gitPath = await this.getGitPath();
 
-    for (const filePath of this.bucket.focus) {
-      try {
-        const fileContent = await fs.readFile(filePath, 'utf-8');
+    const [fileReference] = files;
+    const fileContent = this.store.texts.find(text => text.match(`NAME: ${fileReference}`));
 
-        const metadata = await this.extractMetadataFromContent(fileContent);
+    if (!fileContent) {
+      console.warn(`Failed to retrieve stored text for file "${fileReference}".`);
 
-        const solutionContent = currentSolution.replace(/```(?:[\w-]*\n)?([\s\S]*?)```/g, (match) =>
-          match.replace(/```[\w-]*\n?|```/g, '')
-        );
-
-        await fs.writeFile(filePath, solutionContent);
-      } catch (err) {
-        console.warn(`File not found or error processing: ${filePath}`, err.message);
-
-        continue;
-      }
+      return;
     }
 
-    const branchName = task.toLowerCase().replace(/[\s]+/g, '-').substring(0, 50).replace(/\"/g, '');
+    const filePath = fileContent.match(/FILE_PATH:\s*([^\s\*]+)/)?.[1]?.trim();
+
+    if (!filePath) {
+      console.warn(`Failed to extract FILE_PATH from file "${fileReference}".`);
+
+      return;
+    }
+
+    const targetFilePath = path.join(gitPath, filePath);
+
+    const solutionContent = currentSolution.replace(/```(?:[\w-]*\n)?([\s\S]*?)```/g, (match) =>
+      match.replace(/```[\w-]*\n?|```/g, '')
+    );
+
+    try {
+      await fs.writeFile(targetFilePath, solutionContent);
+
+      console.log(`Solution written to ${targetFilePath}.`);
+    } catch (err) {
+      console.error(`Failed to write to ${targetFilePath}:`, err.message);
+
+      return;
+    }
+
+    const branchName = `${DEFAULT_MODEL}/${task
+      .toLowerCase()
+      .replace(/[\s]+/g, '-')
+      .substring(0, 50)
+      .replace(/\"/g, '')}`;
 
     const commitMessage = (await this.chat([
       {
@@ -464,16 +469,18 @@ class Agent extends RetrievalModel {
     ])).replace(/^"|"$/g, '');
 
     return new Promise((resolve, reject) => {
-      exec(`cd ${gitPath} && git pull && git add . && git commit -m '${commitMessage}' && git checkout -b ${branchName} && git push`, (error, stdout, stderr) => {
-        if (error) {
-          console.error(`Error during git operations: ${error.message}`);
-          reject(error);
-          console.log(stderr);
-        } else {
-          console.log(`Git operations completed: ${stdout}`);
-          resolve();
+      exec(
+        `cd ${gitPath} && git pull && git add ${targetFilePath} && git commit -m '${commitMessage}' && git checkout -b ${branchName} && git push`,
+        (error, stdout, stderr) => {
+          if (error) {
+            console.error(`Git error: ${stderr}`);
+            reject(error);
+          } else {
+            console.log(`Git operations completed: ${stdout}`);
+            resolve();
+          }
         }
-      });
+      );
     });
   }
 
@@ -498,7 +505,7 @@ class Agent extends RetrievalModel {
 
     const { files, task, fullTask } = await this.extractFilesAndTask(topTask);
 
-    console.log(`Starting a new task "${task}"...`);
+    console.log(`Starting a new task ${task}...`);
 
     try {
       console.log('Handling query:', fullTask);
@@ -512,7 +519,7 @@ class Agent extends RetrievalModel {
 
       await this.branchAndCommit(files, task, currentSolution);
 
-      console.log(`Done with task "${task}".`);
+      console.log(`Done with task ${task}.`);
 
       await this.removeCompletedTask(tasks);
 
