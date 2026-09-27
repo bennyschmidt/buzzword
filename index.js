@@ -57,6 +57,9 @@ const DEFAULT_TOOLS = {
 
 const DEFAULT_TOOL_CHAIN = [
   'JSCodeFileCreator',
+  'CodeFileIntegrator',
+  'VariableEvaluator',
+  'CompletenessEvaluator',
   'EndResponseEvaluator'
 ];
 
