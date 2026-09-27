@@ -7,11 +7,12 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+import CodeCompletenessEvaluator from './tools/CodeCompletenessEvaluator/index.js';
 import CodeCreator from './tools/CodeCreator/index.js';
 import CodeFileIntegrator from './tools/CodeFileIntegrator/index.js';
 import CodeIntegrator from './tools/CodeIntegrator/index.js';
-import CompletenessEvaluator from './tools/CompletenessEvaluator/index.js';
-import EndResponseEvaluator from './tools/EndResponseEvaluator/index.js';
+import CodeResponseEvaluator from './tools/CodeResponseEvaluator/index.js';
+import CorrectnessEvaluator from './tools/CorrectnessEvaluator/index.js';
 import JSCodeCreator from './tools/JSCodeCreator/index.js';
 import JSCodeFileCreator from './tools/JSCodeFileCreator/index.js';
 import NoDeviationEvaluator from './tools/NoDeviationEvaluator/index.js';
@@ -39,8 +40,9 @@ const DEFAULT_TOOLS = {
   CodeCreator,
   CodeFileIntegrator,
   CodeIntegrator,
-  CompletenessEvaluator,
-  EndResponseEvaluator,
+  CodeResponseEvaluator,
+  CodeCompletenessEvaluator,
+  CorrectnessEvaluator,
   JSCodeCreator,
   JSCodeFileCreator,
   NoDeviationEvaluator,
@@ -59,8 +61,9 @@ const DEFAULT_TOOL_CHAIN = [
   'JSCodeFileCreator',
   'CodeFileIntegrator',
   'VariableEvaluator',
-  'CompletenessEvaluator',
-  'EndResponseEvaluator'
+  'CodeCompletenessEvaluator',
+  'CorrectnessEvaluator',
+  'CodeResponseEvaluator'
 ];
 
 /**
@@ -488,7 +491,7 @@ class Agent extends RetrievalModel {
     const gitPath = await this.getGitPath();
 
     return new Promise((resolve, reject) => {
-      exec(`cd ${gitPath} && git stash && git checkout master && git pull`, (error, stdout, stderr) => {
+      exec(`cd ${gitPath} && git reset && git stash && git checkout master && git reset --hard HEAD`, (error, stdout, stderr) => {
         if (error) {
           console.error(`Error during git reset: ${error.message}`);
           reject(error);
