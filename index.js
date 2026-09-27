@@ -57,9 +57,6 @@ const DEFAULT_TOOLS = {
 
 const DEFAULT_TOOL_CHAIN = [
   'JSCodeFileCreator',
-  'CodeFileIntegrator',
-  'VariableEvaluator',
-  'CompletenessEvaluator',
   'EndResponseEvaluator'
 ];
 
@@ -70,7 +67,7 @@ const DEFAULT_TOOL_CHAIN = [
  */
 
 class VectorStore {
-  static getCosineSimilarity(a, b) {
+  static getCosineSimilarity (a, b) {
     let dot = 0, magA = 0, magB = 0;
 
     for (let i = 0; i < a.length; i++) {
@@ -82,21 +79,22 @@ class VectorStore {
     return dot / (Math.sqrt(magA) * Math.sqrt(magB));
   }
 
-  constructor() {
+  constructor () {
     this.embeddings = [];
     this.texts = [];
     this.multipliers = [];
   }
 
-  add(text, embedding, priorityMultiplier = 1) {
+  add (text, embedding, priorityMultiplier = 1) {
     this.embeddings.push(embedding);
     this.texts.push(text);
     this.multipliers.push(priorityMultiplier);
   }
 
-  search(queryEmbedding, topK = 3) {
+  search (queryEmbedding, topK = 3) {
     const similarities = this.embeddings.map((embedding, i) => {
       const rawSimilarity = VectorStore.getCosineSimilarity(queryEmbedding, embedding);
+
       return { i, similarity: rawSimilarity * this.multipliers[i] };
     });
 
@@ -115,7 +113,7 @@ class VectorStore {
  */
 
 class RetrievalModel {
-  constructor(config = {}) {
+  constructor (config = {}) {
     this.MODEL_BASE_URL = config.MODEL_BASE_URL || 'http://localhost:11434/api';
     this.MODEL_EMBED_URL = `${this.MODEL_BASE_URL}/embed`;
     this.MODEL_CHAT_URL = `${this.MODEL_BASE_URL}/chat`;
@@ -123,7 +121,7 @@ class RetrievalModel {
     this.EMBEDDING_MODEL = config.EMBEDDING_MODEL || DEFAULT_EMBEDDING_MODEL;
   }
 
-  async embed(text, model = this.EMBEDDING_MODEL) {
+  async embed (text, model = this.EMBEDDING_MODEL) {
     try {
       const response = await fetch(this.MODEL_EMBED_URL, {
         method: 'POST',
@@ -147,61 +145,61 @@ class RetrievalModel {
     }
   }
 
-  async createVectorStore(files, priorityMultiplier = 1) {
+  async createVectorStore (files, priorityMultiplier = 1) {
     const store = new VectorStore();
 
     const rawTexts = await this.readFiles(files);
 
-    const targetChunkSize = 1000;
-    const chunkOverlap = 200;
-
     for (const fullText of rawTexts) {
       if (!fullText || !fullText.trim()) continue;
 
-      // Skip files that do not start with the required header
-      if (!fullText.startsWith('/** * <!NEW FILE>')) continue;
+      const fileSections = fullText.split(/(<!NEW FILE>|<!END OF FILE>)/g);
 
-      const lines = fullText.split('\n');
-      const chunks = [];
+      let currentChunk = [];
 
-      let currentChunkLines = [];
-      let currentLength = 0;
-      let openBrackets = 0;
+      for (const section of fileSections) {
+        if (section.trim() === '<!NEW FILE>') {
+          if (currentChunk.length > 0) {
+            const chunk = currentChunk.join('\n').trim();
 
-      for (let index = 0; index < lines.length; index++) {
-        const line = lines[index];
+            if (chunk) {
+              const embedding = await this.embed(chunk);
 
-        currentChunkLines.push(line);
-        currentLength += line.length + 1;
+              if (embedding && Array.isArray(embedding)) {
+                store.add(chunk, embedding, priorityMultiplier);
+              }
+            }
 
-        const opens = (line.match(/[\{\[\(]/g) || []).length;
-        const closes = (line.match(/[\}\]\)]/g) || []).length;
+            currentChunk = [];
+          }
+        } else if (section.trim() === '<!END OF FILE>') {
+          if (currentChunk.length > 0) {
+            const chunk = currentChunk.join('\n').trim();
 
-        openBrackets += opens - closes;
+            if (chunk) {
+              const embedding = await this.embed(chunk);
 
-        if (currentLength >= targetChunkSize && openBrackets <= 0) {
-          chunks.push(currentChunkLines.join('\n'));
+              if (embedding && Array.isArray(embedding)) {
+                store.add(chunk, embedding, priorityMultiplier);
+              }
+            }
 
-          const overlapCount = Math.min(currentChunkLines.length, Math.ceil(chunkOverlap / 40));
-
-          currentChunkLines = currentChunkLines.slice(-overlapCount);
-          currentLength = currentChunkLines.reduce((acc, l) => acc + l.length + 1, 0);
+            currentChunk = [];
+          }
+        } else {
+          currentChunk.push(section);
         }
       }
 
-      if (currentChunkLines.length > 0) {
-        chunks.push(currentChunkLines.join('\n'));
-      }
+      if (currentChunk.length > 0) {
+        const chunk = currentChunk.join('\n').trim();
 
-      for (const chunk of chunks) {
-        const trimmedChunk = chunk.trim();
+        if (chunk) {
+          const embedding = await this.embed(chunk);
 
-        if (!trimmedChunk) continue;
-
-        const embedding = await this.embed(trimmedChunk);
-
-        if (embedding && Array.isArray(embedding)) {
-          store.add(trimmedChunk, embedding, priorityMultiplier);
+          if (embedding && Array.isArray(embedding)) {
+            store.add(chunk, embedding, priorityMultiplier);
+          }
         }
       }
     }
@@ -209,42 +207,47 @@ class RetrievalModel {
     return store;
   }
 
-  async loadDocuments(dirPath) {
-    const files = [];
+  async loadFilesFromPaths (dirPath) {
+    const pathsFile = path.join(dirPath, 'paths.txt');
 
-    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    try {
+      const pathsContent = await fs.readFile(pathsFile, 'utf-8');
 
-    for (const entry of entries) {
-      const fullPath = path.join(dirPath, entry.name);
+      const filePaths = pathsContent
+        .split('\n')
+        .filter(line => line.trim() !== '')
+        .map(line => path.join(dirPath, line.trim()));
 
-      if (entry.isDirectory()) {
-        const nestedFiles = await this.loadDocuments(fullPath);
+      return filePaths;
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        console.warn(`No paths.txt found in ${dirPath}. Skipping.`);
 
-        files.push(...nestedFiles);
-      } else if (entry.isFile()) {
-        files.push(fullPath);
+        return [];
+      } else {
+        console.error(`Error reading paths.txt in ${dirPath}:`, err.message);
+
+        return [];
       }
     }
-
-    return files;
   }
 
-  async readFiles(files) {
+  async readFiles (files) {
     return Promise.all(
       files.map(async file => {
         try {
           return await fs.readFile(file, 'utf-8');
         } catch (err) {
           console.warn(`Failed to read ${file}: ${err.message}`);
-
           return '';
+
         }
       })
     );
   }
 
-  async chat(messages, model = this.MODEL) {
-    console.log('\n\nModel Input:\n\n', messages[messages.length - 1]?.content);
+  async chat (messages, model = this.MODEL) {
+    console.log('\n\nMODEL INPUT:\n\n', messages[messages.length - 1]?.content);
 
     const response = await fetch(this.MODEL_CHAT_URL, {
       method: 'POST',
@@ -266,7 +269,7 @@ class RetrievalModel {
 
     let content = '';
 
-    process.stdout.write('\n\nModel Output:\n\n');
+    process.stdout.write('\n\nMODEL OUTPUT:\n\n');
 
     while (true) {
       const { done, value } = await reader.read();
@@ -281,6 +284,7 @@ class RetrievalModel {
 
         try {
           const parsed = JSON.parse(line);
+
           if (parsed.message?.content) {
             const token = parsed.message.content;
 
@@ -290,6 +294,7 @@ class RetrievalModel {
         } catch (e) { /* Ignore parsing errors */ }
       }
     }
+
     process.stdout.write('\n');
 
     return content;
@@ -308,9 +313,11 @@ class RetrievalModel {
  */
 
 class Agent extends RetrievalModel {
-  static tools = { ...DEFAULT_TOOLS };
+  static tools = {
+    ...DEFAULT_TOOLS
+  };
 
-  constructor(config = {}) {
+  constructor (config = {}) {
     super(config);
 
     this.tools = { ...Agent.tools, ...(config.tools || {}) };
@@ -319,12 +326,14 @@ class Agent extends RetrievalModel {
     this.loadAndExec();
   }
 
-  async load() {
+  async load () {
     console.log('Loading vector stores...');
 
-    const lowPriorityFiles = await this.loadDocuments(path.join(__dirname, 'buckets/background'));
+    const gitPath = await this.getGitPath();
 
-    const highPriorityFiles = await this.loadDocuments(path.join(__dirname, 'buckets/focus'));
+    const lowPriorityFiles = await this.loadFilesFromPaths(path.join(__dirname, 'buckets/background'));
+
+    const highPriorityFiles = await this.loadFilesFromPaths(path.join(__dirname, 'buckets/focus'));
 
     const lowPriorityStore = await this.createVectorStore(lowPriorityFiles, 1);
 
@@ -335,10 +344,23 @@ class Agent extends RetrievalModel {
     this.store.texts = [...lowPriorityStore.texts, ...highPriorityStore.texts];
     this.store.multipliers = [...lowPriorityStore.multipliers, ...highPriorityStore.multipliers];
 
+    this.bucket = {
+      background: lowPriorityFiles,
+      focus: highPriorityFiles
+    };
+
     console.log('Done.');
   }
 
-  async readTopTask() {
+  async getGitPath () {
+    const gitPathFile = path.join(__dirname, 'buckets/focus/gitpath.txt');
+
+    const gitPath = await fs.readFile(gitPathFile, 'utf-8');
+
+    return path.resolve(__dirname, 'buckets/focus', gitPath.trim());
+  }
+
+  async readTopTask () {
     try {
       const tasksContent = await fs.readFile(path.join(__dirname, 'tasks.txt'), 'utf-8');
 
@@ -365,7 +387,7 @@ class Agent extends RetrievalModel {
     }
   }
 
-  async removeCompletedTask(tasks) {
+  async removeCompletedTask (tasks) {
     const updatedTasks = tasks.slice(1).join('\n\n');
 
     await fs.writeFile(path.join(__dirname, 'tasks.txt'), updatedTasks);
@@ -373,23 +395,28 @@ class Agent extends RetrievalModel {
     await fs.writeFile(path.join(__dirname, 'task.txt'), '');
   }
 
-  async extractFilesAndTask(topTask) {
+  async extractFilesAndTask (topTask) {
     const filesMatch = topTask.match(/\[FILES:\s*([^\]]+)\]/i);
     const taskMatch = topTask.match(/\[TASK:\s*([^\]]+)\]/i);
 
     if (!filesMatch || !taskMatch) {
       console.warn(`No files or task found in task: ${topTask}`);
 
-      return { files: ['Unknown'], task: 'Unknown' };
+      return {
+        files: ['Unknown'],
+        task: 'Unknown',
+        fullTask: topTask
+      };
     }
 
     const files = filesMatch[1].split(',').map(file => file.trim().replace(/["']/g, ''));
     const task = taskMatch[1].trim();
+    const fullTask = topTask.replace(/^.*\[TASK:\s*[^\]]+\]\s*/i, '').trim();
 
-    return { files, task };
+    return { files, task, fullTask };
   }
 
-  async extractMetadataFromContent(fileContent) {
+  async extractMetadataFromContent (fileContent) {
     const metadata = {
       NAME: fileContent.match(/NAME:\s*"([^"]+)"\s*/)?.[1]?.trim(),
       TYPE: fileContent.match(/TYPE:\s*"([^"]+)"\s*/)?.[1]?.trim(),
@@ -403,47 +430,42 @@ class Agent extends RetrievalModel {
     return metadata;
   }
 
-  async branchAndCommit(files, task, currentSolution) {
-    for (const file of files) {
-      const filePath = path.join(__dirname, 'buckets/focus', file);
+  async branchAndCommit (files, task, currentSolution) {
+    const gitPath = await this.getGitPath();
 
-      const fileContent = await fs.readFile(filePath, 'utf-8');
+    for (const filePath of this.bucket.focus) {
+      try {
+        const fileContent = await fs.readFile(filePath, 'utf-8');
 
-      const metadata = await this.extractMetadataFromContent(fileContent);
+        const metadata = await this.extractMetadataFromContent(fileContent);
 
-      if (!metadata.FILE_PATH) {
-        console.warn(`No FILE_PATH found in file: ${file}`);
+        const solutionContent = currentSolution.replace(/```(?:[\w-]*\n)?([\s\S]*?)```/g, (match) =>
+          match.replace(/```[\w-]*\n?|```/g, '')
+        );
+
+        await fs.writeFile(filePath, solutionContent);
+      } catch (err) {
+        console.warn(`File not found or error processing: ${filePath}`, err.message);
+
         continue;
       }
-
-      const fullPath = path.join(__dirname, metadata.FILE_PATH);
-      const dirPath = path.dirname(fullPath);
-
-      await fs.mkdir(dirPath, { recursive: true });
-
-      const fileExtension = currentSolution.match(/```(?:[\w-]*\n)?([\s\S]*?)```/g)?.length > 1 ? '.md' : '.js';
-
-      const solutionContent = currentSolution.replace(/```(?:[\w-]*\n)?([\s\S]*?)```/g, (match) =>
-        match.replace(/```[\w-]*\n?|```/g, '')
-      );
-
-      await fs.writeFile(fullPath, solutionContent);
     }
 
-    const branchName = task.toLowerCase().replace(/\s+/g, '-').substring(0, 50);
+    const branchName = task.toLowerCase().replace(/[\s]+/g, '-').substring(0, 50).replace(/\"/g, '');
 
-    const commitMessage = await this.chat([
+    const commitMessage = (await this.chat([
       {
         role: 'user',
-        content: `Generate a concise commit message for the following task: "${task}".\n\nDon't include any other details in your response.`,
+        content: `Generate a concise commit message for the following task: ${task}.\n\nDon't include any other details in your response.`,
       },
-    ]);
+    ])).replace(/^"|"$/g, '');
 
     return new Promise((resolve, reject) => {
-      exec(`git pull && git add . && git commit -m "${commitMessage}" && git checkout -b ${branchName} && git push`, (error, stdout, stderr) => {
+      exec(`cd ${gitPath} && git pull && git add . && git commit -m '${commitMessage}' && git checkout -b ${branchName} && git push`, (error, stdout, stderr) => {
         if (error) {
           console.error(`Error during git operations: ${error.message}`);
           reject(error);
+          console.log(stderr);
         } else {
           console.log(`Git operations completed: ${stdout}`);
           resolve();
@@ -452,9 +474,11 @@ class Agent extends RetrievalModel {
     });
   }
 
-  async resetGitState() {
+  async gitReady () {
+    const gitPath = await this.getGitPath();
+
     return new Promise((resolve, reject) => {
-      exec(`git stash && git checkout master && git pull`, (error, stdout, stderr) => {
+      exec(`cd ${gitPath} && git stash && git checkout master && git pull`, (error, stdout, stderr) => {
         if (error) {
           console.error(`Error during git reset: ${error.message}`);
           reject(error);
@@ -466,19 +490,19 @@ class Agent extends RetrievalModel {
     });
   }
 
-  async exec() {
+  async exec () {
     const { topTask, tasks } = await this.readTopTask();
 
-    const { files, task } = await this.extractFilesAndTask(topTask);
+    const { files, task, fullTask } = await this.extractFilesAndTask(topTask);
 
     console.log(`Starting a new task "${task}"...`);
 
     try {
-      console.log('Handling query:', task);
+      console.log('Handling query:', fullTask);
 
-      const response = await this.query(task);
+      const response = await this.query(fullTask);
 
-      console.log('\n', response, '\n');
+      console.log('\nAGENT RESPONSE:', response, '\n');
 
       const matches = response.match(/```(?:[\w-]*\n)?([\s\S]*?)```/g);
       const currentSolution = matches?.length ? matches.join('\n') : response;
@@ -488,7 +512,8 @@ class Agent extends RetrievalModel {
       console.log(`Done with task "${task}".`);
 
       await this.removeCompletedTask(tasks);
-      await this.resetGitState();
+
+      await this.gitReady();
 
       console.log('Task complete!');
 
@@ -499,7 +524,7 @@ class Agent extends RetrievalModel {
     }
   }
 
-  async query(input) {
+  async query (input) {
     let currentSolution = '';
     let lastResponse = '';
 
@@ -521,11 +546,12 @@ class Agent extends RetrievalModel {
 
       if (!toolPrompt) continue;
 
-      messages.push({ role: 'user', content: toolPrompt });
+      messages.push({
+        role: 'user',
+        content: toolPrompt
+      });
 
       lastResponse = await this.chat(messages);
-
-      messages.push({ role: 'assistant', content: lastResponse });
 
       const matches = lastResponse.match(/```(?:[\w-]*\n)?([\s\S]*?)```/g);
 
@@ -539,7 +565,7 @@ class Agent extends RetrievalModel {
     return lastResponse;
   }
 
-  async loadAndExec() {
+  async loadAndExec () {
     await this.load();
 
     await this.exec();
@@ -548,7 +574,7 @@ class Agent extends RetrievalModel {
 
 // Application
 
-async function main() {
+async function main () {
   new Agent();
 }
 
