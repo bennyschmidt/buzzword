@@ -1,9 +1,11 @@
-const RetrievalAugmentedGeneration = async (agent, input, currentSolution = '') => {
-  const queryEmbedding = await agent.embed(`${input}\n\nReturn only the most relevant file(s).`);
+const RetrievalAugmentedGeneration = async (agent, { query }) => {
+  const queryEmbedding = await agent.embed(
+    `${query}\n\nReturn only the most relevant file(s).`
+  );
 
   const documents = agent.store.search(queryEmbedding);
 
-  return `Context:\n${documents.join('\n---\n')}\n\nQuery: ${input}`;
+  return `CONTEXT:\n${documents.join('\n---\n')}\n\nQUERY: ${query}\n`;
 };
 
 export default RetrievalAugmentedGeneration;

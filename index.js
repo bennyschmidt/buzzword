@@ -132,7 +132,10 @@ class RetrievalModel {
       const response = await fetch(this.MODEL_EMBED_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, input: text }),
+        body: JSON.stringify({
+          model,
+          input: text
+        }),
       });
 
       const data = await response.json();
@@ -214,15 +217,19 @@ class RetrievalModel {
   }
 
   async loadFilesFromPaths (dirPath) {
-    const buzzConfigPath = path.join(__dirname, 'buzz.json');
+    const buzzPath = path.join(__dirname, 'buzz.json');
 
     try {
-      const buzzConfig = JSON.parse(await fs.readFile(buzzConfigPath, 'utf-8'));
+      const buzzConfig = JSON.parse(
+        await fs.readFile(buzzPath, 'utf-8')
+      );
+
       const { paths } = buzzConfig;
 
       return paths.map(filePath => path.join(dirPath, filePath));
     } catch (err) {
       console.error(`Error reading buzz.json: ${err.message}`);
+
       return [];
     }
   }
@@ -233,7 +240,7 @@ class RetrievalModel {
         try {
           return await fs.readFile(file, 'utf-8');
         } catch (err) {
-          console.warn(`Failed to read ${file}: ${err.message}`);
+          console.warn(`\n× Failed to read ${file}: ${err.message}\n`);
 
           return '';
         }
@@ -256,7 +263,7 @@ class RetrievalModel {
     });
 
     if (!response.body) {
-      throw new Error('Failed to read streaming body from model server.');
+      throw new Error('\n× Failed to read streaming body from model server.\n');
     }
 
     const reader = response.body.getReader();
@@ -325,102 +332,74 @@ class Agent extends RetrievalModel {
     this.loadAndExec();
   }
 
+  async readBuzzConfig () {
+    try {
+      const buzzPath = path.join(__dirname, 'buzz.json');
+
+      const buzzConfig = JSON.parse(
+        await fs.readFile(buzzPath, 'utf-8')
+      );
+
+      const buzzFile = await fs.readFile(buzzPath, 'utf-8');
+
+      return JSON.parse(buzzFile || '{}');
+    } catch (err) {
+     console.error(`Error reading from buzz.json: ${err.message}`);
+     process.exit(1);
+   }
+  }
+
   async load () {
-    console.log('Loading vector stores...');
+    console.log('Starting...');
 
-    const buzzConfigPath = path.join(__dirname, 'buzz.json');
+    const { gitPath, paths } = await this.readBuzzConfig();
 
-    try {
-      const buzzConfig = JSON.parse(await fs.readFile(buzzConfigPath, 'utf-8'));
-      const { gitPath, paths } = buzzConfig;
+    this.gitPath = path.resolve(__dirname, 'bucket', gitPath);
 
-      this.gitPath = path.resolve(__dirname, 'bucket', gitPath);
+    console.log('Loading files from bucket...');
 
-      const focusFiles = await this.loadFilesFromPaths(path.join(__dirname, 'bucket'));
+    const focusFiles = await this.loadFilesFromPaths(path.join(__dirname, 'bucket'));
 
-      const focusFileStore = await this.createVectorStore(focusFiles, 2);
+    console.log('Done.\nCreating vector stores...');
 
-      this.store = new VectorStore();
-      this.store.embeddings = [...focusFileStore.embeddings];
-      this.store.texts = [...focusFileStore.texts];
-      this.store.multipliers = [...focusFileStore.multipliers];
+    const focusFileStore = await this.createVectorStore(focusFiles, 2);
 
-      console.log('Done.');
-    } catch (err) {
-      console.error(`Error loading buzz.json: ${err.message}`);
-      process.exit(1);
-    }
+    this.store = new VectorStore();
+    this.store.embeddings = [...focusFileStore.embeddings];
+    this.store.texts = [...focusFileStore.texts];
+    this.store.multipliers = [...focusFileStore.multipliers];
+
+    console.log('Done.\nAgent has started.');
   }
 
-  async readTopTask () {
-    const buzzConfigPath = path.join(__dirname, 'buzz.json');
+  async shiftTasks (taskList) {
+    const config = await this.readBuzzConfig();
 
-    try {
-      const buzzConfig = JSON.parse(await fs.readFile(buzzConfigPath, 'utf-8'));
-      const { tasks } = buzzConfig;
+    const removedTask = taskList.shift();
 
-      if (tasks.length === 0) {
-        console.log('All tasks complete!');
-        process.exit(0);
-      }
+    config.tasks = [
+      ...taskList
+    ];
 
-      const topTask = tasks[0];
+    await fs.writeFile(path.join(__dirname, '.task'), '');
 
-      await fs.writeFile(path.join(__dirname, '.task'), topTask);
+    const buzzPath = path.join(__dirname, 'buzz.json');
 
-      return { topTask, tasks };
-    } catch (err) {
-      console.error(`Error reading buzz.json: ${err.message}`);
-      process.exit(1);
-    }
+    await fs.writeFile(buzzPath, JSON.stringify(config, null, 2));
+
+    return removedTask;
   }
 
-  async removeCompletedTask (tasks) {
-    const buzzConfigPath = path.join(__dirname, 'buzz.json');
+  async branchAndCommit ({ files, task, currentSolution }) {
+    console.log('Writing solution to file...');
 
-    try {
-      const buzzConfig = JSON.parse(await fs.readFile(buzzConfigPath, 'utf-8'));
-
-      buzzConfig.tasks = tasks.slice(1);
-
-      await fs.writeFile(buzzConfigPath, JSON.stringify(buzzConfig, null, 2));
-
-      await fs.writeFile(path.join(__dirname, '.task'), '');
-    } catch (err) {
-      console.error(`Error updating buzz.json: ${err.message}`);
-      process.exit(1);
-    }
-  }
-
-  async extractFilesAndTask (topTask) {
-    const filesMatch = topTask.match(/\[FILES:\s*([^\]]+)\]/i);
-    const taskMatch = topTask.match(/\[TASK:\s*([^\]]+)\]/i);
-
-    if (!filesMatch || !taskMatch) {
-      console.warn(`No files or task found in task: ${topTask}`);
-
-      return {
-        files: ['Unknown'],
-        task: 'Unknown',
-        fullTask: topTask
-      };
-    }
-
-    const files = filesMatch[1].split(',').map(file => file.trim().replace(/["']/g, ''));
-    const task = taskMatch[1].trim();
-    const fullTask = topTask.replace(/^.*\[TASK:\s*[^\]]+\]\s*/i, '').trim();
-
-    return { files, task, fullTask };
-  }
-
-  async branchAndCommit (files, task, currentSolution) {
     const gitPath = await this.gitPath;
 
     const [fileReference] = files;
     const fileContent = this.store.texts.find(text => text.match(`NAME: ${fileReference}`));
 
     if (!fileContent) {
-      console.warn(`Failed to retrieve stored text for file "${fileReference}".`);
+      console.warn(`\n× Failed to retrieve stored text for file "${fileReference}".\n`);
 
       return;
     }
@@ -428,7 +407,7 @@ class Agent extends RetrievalModel {
     const filePath = fileContent.match(/FILE_PATH:\s*([^\s\*]+)/)?.[1]?.trim();
 
     if (!filePath) {
-      console.warn(`Failed to extract FILE_PATH from file "${fileReference}".`);
+      console.warn(`\n× Failed to extract FILE_PATH from file: "${fileReference}".\n`);
 
       return;
     }
@@ -442,12 +421,14 @@ class Agent extends RetrievalModel {
     try {
       await fs.writeFile(targetFilePath, solutionContent);
 
-      console.log(`Solution written to ${targetFilePath}.`);
+      console.log(`Done.\nUpdated ${targetFilePath}.`);
     } catch (err) {
-      console.error(`Failed to write to ${targetFilePath}:`, err.message);
+      console.error(`\n× Failed to write to ${targetFilePath}:`, err.message);
 
       return;
     }
+
+    console.log('Creating a new branch in git...');
 
     const branchName = `${DEFAULT_MODEL}/${task
       .toLowerCase()
@@ -457,12 +438,16 @@ class Agent extends RetrievalModel {
         Date.now()
       }`;
 
+    console.log('Adding files to stage...');
+
     const commitMessage = (await this.chat([
       {
         role: 'user',
         content: `Generate a concise commit message for the following task: ${task}.\n\nDon't include any other details in your response.`,
       },
     ])).replace(/^"|"$/g, '');
+
+    console.log('Committing and pushing to git...');
 
     await new Promise((resolve, reject) => {
       exec(
@@ -479,6 +464,8 @@ class Agent extends RetrievalModel {
       );
     });
 
+    console.log('Done.\nResetting git for the next task...');
+
     await new Promise((resolve, reject) => {
       exec(`cd ${gitPath} && git reset && git stash && git checkout master && git reset --hard HEAD`, (error, stdout, stderr) => {
         if (error) {
@@ -490,39 +477,125 @@ class Agent extends RetrievalModel {
         }
       });
     });
+
+    console.log('Done.');
   }
 
-  async exec () {
-    const { topTask, tasks } = await this.readTopTask();
+  async exec (previousSolution = '') {
+    const { tasks = [] } = await this.readBuzzConfig();
 
-    const { files, task, fullTask } = await this.extractFilesAndTask(topTask);
+    if (!tasks?.length) {
+      console.log('No tasks to complete.');
+      process.exit(0);
+    }
 
-    console.log(`Starting a new task ${task}...`);
+    const [topTask] = tasks;
 
+    await fs.writeFile(path.join(__dirname, '.task'), topTask);
+
+    const filesMatch = topTask.match(/\[FILES:\s*([^\]]+)\]/i);
+    const taskMatch = topTask.match(/\[TASK:\s*([^\]]+)\]/i);
+
+    if (!filesMatch) {
+      console.warn(`No file(s) found for task: ${topTask}`);
+    }
+
+    if (!taskMatch) {
+      console.warn(`No task text found for task: ${topTask}`);
+    }
+
+    const isBlankTemplate = Boolean(!filesMatch || !taskMatch);
+
+    const files = isBlankTemplate
+      ? ['File']
+      : filesMatch[1]
+          .split(',')
+          .map(file => file
+            .trim()
+            .replace(/["']/g, '')
+          );
+
+    const task = isBlankTemplate
+      ? ''
+      : taskMatch[1].trim();
+
+    const taskText = isBlankTemplate
+      ? topTask
+      : topTask
+          .replace(/^.*\[TASK:\s*[^\]]+\]\s*/i, '')
+          .trim();
+
+    console.log(
+      `Starting a new task${isBlankTemplate
+        ? ' from a blank template'
+        : ''}: ${task}...`
+    );
+
+    return this.task({
+      files,
+      taskList: tasks,
+      task,
+      query: taskText,
+      currentSolution: previousSolution
+    });
+  }
+
+  async task ({
+    files,
+    taskList,
+    task,
+    query,
+    currentSolution = ''
+  }) {
     try {
-      console.log('Handling query:', fullTask);
+      console.log('\nAGENT QUERY:', query, '\n');
 
-      const response = await this.query(fullTask);
+      const response = await this.query({
+        files,
+        taskList,
+        task,
+        query
+      });
 
       console.log('\nAGENT RESPONSE:', response, '\n');
 
       const matches = response.match(/```(?:[\w-]*\n)?([\s\S]*?)```/g);
-      const currentSolution = matches?.length ? matches.join('\n') : response;
 
-      await this.branchAndCommit(files, task, currentSolution);
+      currentSolution = matches?.length
+        ? matches.join('\n')
+        : response;
 
-      console.log(`Done with task ${task}.`);
+      await this.branchAndCommit({
+        files,
+        taskList,
+        task,
+        query,
+        currentSolution
+      });
 
-      await this.removeCompletedTask(tasks);
+      console.log(`\n✔ Finished task: ${task}.\n\nPruning task log...\n`);
 
-      await this.exec();
+      const completedTask = await this.shiftTasks(taskList);
+
+      if (!completedTask) {
+        console.warn('\n× Failed to prune a completed task: ${task}.\n');
+      } else {
+        console.log('Done.');
+      }
+
+      await this.exec(currentSolution);
     } catch (err) {
-      console.error('Error during query execution:', err.message);
+      console.error('Error during task execution:', err.message);
       process.exit(1);
     }
   }
 
-  async query (input) {
+  async query ({
+    files,
+    taskList,
+    task,
+    query
+  }) {
     let currentSolution = '';
     let lastResponse = '';
 
@@ -540,7 +613,16 @@ class Agent extends RetrievalModel {
 
       console.log(`Using tool: "${toolName}"...`);
 
-      const toolPrompt = await tool(this, input, currentSolution);
+      const toolPrompt = await tool(
+        this,
+        {
+          files,
+          taskList,
+          task,
+          query,
+          currentSolution
+        }
+      );
 
       if (!toolPrompt) continue;
 

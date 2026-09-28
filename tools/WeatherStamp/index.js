@@ -1,4 +1,4 @@
-const WeatherStamp = async (agent, input) => {
+const WeatherStamp = async () => {
   const userCity = 'London';
   const userLat = 51.5074;
   const userLong = 0.1278;
