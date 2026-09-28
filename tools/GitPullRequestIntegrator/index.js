@@ -5,9 +5,9 @@ import { exec } from 'node:child_process';
 const GitPullRequestIntegrator = async (agent, { files, task, currentSolution = '' }) => {
   console.log('Reading relevant file(s)...');
 
-  const { gitPath } = await agent.readConfig();
+  const { gitPath: gitDir } = await agent.readConfig();
 
-  const gitPath = path.resolve(__dirname, 'bucket', gitPath);
+  const gitPath = path.resolve(__dirname, 'bucket', gitDir);
   const [fileReference] = files;
   const fileContent = agent.store.texts.find(text => text.match(`NAME: ${fileReference}`));
 
