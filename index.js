@@ -316,8 +316,7 @@ class RetrievalModel {
  * control over the query lifecycle.
  *
  * Agent automatically reads tasks from "buzz.json",
- * processes them one by one, and commits solutions
- * to git.
+ * processes them one by one.
  */
 
 class Agent extends RetrievalModel {
@@ -525,12 +524,6 @@ class Agent extends RetrievalModel {
   }
 
   async load () {
-    console.log('Starting...');
-
-    const { gitPath, paths } = await this.readConfig();
-
-    this.gitPath = path.resolve(__dirname, 'bucket', gitPath);
-
     console.log('Loading files from bucket...');
 
     const focusFiles = await this.loadFilesFromPaths(path.join(__dirname, 'bucket'));
@@ -544,7 +537,7 @@ class Agent extends RetrievalModel {
     this.store.texts = [...focusFileStore.texts];
     this.store.multipliers = [...focusFileStore.multipliers];
 
-    console.log('Done.\nAgent has started.');
+    console.log('Done.');
   }
 
   async loadAndExec () {
@@ -556,7 +549,7 @@ class Agent extends RetrievalModel {
 
 // Application
 
-async function main() {
+async function main () {
   new Agent();
 }
 

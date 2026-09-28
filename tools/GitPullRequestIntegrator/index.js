@@ -3,11 +3,12 @@ import path from 'node:path';
 import { exec } from 'node:child_process';
 
 const GitPullRequestIntegrator = async (agent, { files, task, currentSolution = '' }) => {
-  console.log('Writing solution to file...');
+  console.log('Reading relevant file(s)...');
 
-  const gitPath = agent.gitPath;
+  const { gitPath } = await agent.readConfig();
+
+  const gitPath = path.resolve(__dirname, 'bucket', gitPath);
   const [fileReference] = files;
-
   const fileContent = agent.store.texts.find(text => text.match(`NAME: ${fileReference}`));
 
   if (!fileContent) {
@@ -29,6 +30,8 @@ const GitPullRequestIntegrator = async (agent, { files, task, currentSolution = 
   const solutionContent = currentSolution.replace(/```(?:[\w-]*\n)?([\s\S]*?)```/g, (match) =>
     match.replace(/```[\w-]*\n?|```/g, '')
   );
+
+  console.log('Writing solution to file...');
 
   try {
     await fs.writeFile(targetFilePath, solutionContent);
@@ -88,7 +91,7 @@ const GitPullRequestIntegrator = async (agent, { files, task, currentSolution = 
 
   console.log('Done.');
 
-  return `The solution has been written to ${targetFilePath}, committed, and pushed to a new branch "${branchName}".`;
+  return `Saved to ${targetFilePath}, committed, and pushed to a new branch "${branchName}".`;
 };
 
 export default GitPullRequestIntegrator;
