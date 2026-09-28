@@ -13,10 +13,12 @@ import CodeFileIntegrator from './tools/CodeFileIntegrator/index.js';
 import CodeIntegrator from './tools/CodeIntegrator/index.js';
 import CodeResponseEvaluator from './tools/CodeResponseEvaluator/index.js';
 import CorrectnessEvaluator from './tools/CorrectnessEvaluator/index.js';
+import GitPullRequestIntegrator from './tools/GitPullRequestIntegrator/index.js';
 import JSCodeCreator from './tools/JSCodeCreator/index.js';
 import JSCodeFileCreator from './tools/JSCodeFileCreator/index.js';
 import NoDeviationEvaluator from './tools/NoDeviationEvaluator/index.js';
 import NoFileDeviationEvaluator from './tools/NoFileDeviationEvaluator/index.js';
+import CodeFileDecorationCreator from './tools/CodeFileDecorationCreator/index.js';
 import RetrievalAugmentedGeneration from './tools/RetrievalAugmentedGeneration/index.js';
 import VariableEvaluator from './tools/VariableEvaluator/index.js';
 import WeatherStamp from './tools/WeatherStamp/index.js';
@@ -37,12 +39,14 @@ const {
 
 const DEFAULT_TOOLS = {
   RetrievalAugmentedGeneration,
+  CodeCompletenessEvaluator,
   CodeCreator,
+  CodeFileDecorationCreator,
   CodeFileIntegrator,
   CodeIntegrator,
   CodeResponseEvaluator,
-  CodeCompletenessEvaluator,
   CorrectnessEvaluator,
+  GitPullRequestIntegrator,
   JSCodeCreator,
   JSCodeFileCreator,
   NoDeviationEvaluator,
@@ -63,7 +67,9 @@ const DEFAULT_TOOL_CHAIN = [
   'VariableEvaluator',
   'CodeCompletenessEvaluator',
   'CorrectnessEvaluator',
-  'CodeResponseEvaluator'
+  'CodeResponseEvaluator',
+  'CodeFileDecorationCreator',
+  'GitPullRequestIntegrator'
 ];
 
 /**
@@ -332,7 +338,7 @@ class Agent extends RetrievalModel {
     this.loadAndExec();
   }
 
-  async readBuzzConfig () {
+  async readConfig () {
     try {
       const buzzPath = path.join(__dirname, 'buzz.json');
 
@@ -349,31 +355,8 @@ class Agent extends RetrievalModel {
    }
   }
 
-  async load () {
-    console.log('Starting...');
-
-    const { gitPath, paths } = await this.readBuzzConfig();
-
-    this.gitPath = path.resolve(__dirname, 'bucket', gitPath);
-
-    console.log('Loading files from bucket...');
-
-    const focusFiles = await this.loadFilesFromPaths(path.join(__dirname, 'bucket'));
-
-    console.log('Done.\nCreating vector stores...');
-
-    const focusFileStore = await this.createVectorStore(focusFiles, 2);
-
-    this.store = new VectorStore();
-    this.store.embeddings = [...focusFileStore.embeddings];
-    this.store.texts = [...focusFileStore.texts];
-    this.store.multipliers = [...focusFileStore.multipliers];
-
-    console.log('Done.\nAgent has started.');
-  }
-
   async shiftTasks (taskList) {
-    const config = await this.readBuzzConfig();
+    const config = await this.readConfig();
 
     const removedTask = taskList.shift();
 
@@ -390,99 +373,100 @@ class Agent extends RetrievalModel {
     return removedTask;
   }
 
-  async branchAndCommit ({ files, task, currentSolution }) {
-    console.log('Writing solution to file...');
-
-    const gitPath = await this.gitPath;
-
-    const [fileReference] = files;
-    const fileContent = this.store.texts.find(text => text.match(`NAME: ${fileReference}`));
-
-    if (!fileContent) {
-      console.warn(`\n× Failed to retrieve stored text for file "${fileReference}".\n`);
-
-      return;
-    }
-
-    const filePath = fileContent.match(/FILE_PATH:\s*([^\s\*]+)/)?.[1]?.trim();
-
-    if (!filePath) {
-      console.warn(`\n× Failed to extract FILE_PATH from file: "${fileReference}".\n`);
-
-      return;
-    }
-
-    const targetFilePath = path.join(gitPath, filePath);
-
-    const solutionContent = currentSolution.replace(/```(?:[\w-]*\n)?([\s\S]*?)```/g, (match) =>
-      match.replace(/```[\w-]*\n?|```/g, '')
-    );
-
+  async task ({
+    files,
+    taskList,
+    task,
+    query,
+    currentSolution = ''
+  }) {
     try {
-      await fs.writeFile(targetFilePath, solutionContent);
+      console.log('\nAGENT TASK:', query, '\n');
 
-      console.log(`Done.\nUpdated ${targetFilePath}.`);
+      const response = await this.query({
+        files,
+        taskList,
+        task,
+        query,
+        currentSolution
+      });
+
+      console.log('\nAGENT SOLUTION:', response, '\n');
+
+      console.log(`\n✔ Finished task: ${task}.\n\nPruning task log...\n`);
+
+      const completedTask = await this.shiftTasks(taskList);
+
+      if (!completedTask) {
+        console.warn('\n× Failed to prune a completed task: ${task}.\n');
+      } else {
+        console.log('Done.');
+      }
+
+      await this.exec(currentSolution);
     } catch (err) {
-      console.error(`\n× Failed to write to ${targetFilePath}:`, err.message);
-
-      return;
+      console.error('Error during task execution:', err.message);
+      process.exit(1);
     }
+  }
 
-    console.log('Creating a new branch in git...');
+  async query ({
+    files,
+    taskList,
+    task,
+    query,
+    currentSolution = ''
+  }) {
+    let lastResponse = '';
 
-    const branchName = `${DEFAULT_MODEL}/${task
-      .toLowerCase()
-      .replace(/[\s]+/g, '-')
-      .substring(0, 50)
-      .replace(/\"/g, '')}-${
-        Date.now()
-      }`;
+    const messages = [];
 
-    console.log('Adding files to stage...');
+    for (let i = 0; i < this.chain.length; i++) {
+      const toolName = this.chain[i];
+      const tool = this.tools[toolName];
 
-    const commitMessage = (await this.chat([
-      {
-        role: 'user',
-        content: `Generate a concise commit message for the following task: ${task}.\n\nDon't include any other details in your response.`,
-      },
-    ])).replace(/^"|"$/g, '');
+      if (!tool) {
+        console.warn(`Tool "${toolName}" not found. Skipping.`);
 
-    console.log('Committing and pushing to git...');
+        continue;
+      }
 
-    await new Promise((resolve, reject) => {
-      exec(
-        `cd ${gitPath} && git pull && git add ${targetFilePath} && git commit -m '${commitMessage}' && git checkout -b ${branchName} && git push`,
-        (error, stdout, stderr) => {
-          if (error) {
-            console.error(`Error pushing to git: ${stderr}`);
-            reject(error);
-          } else {
-            console.log(`Successfully pushed to git: ${stdout}`);
-            resolve();
-          }
+      console.log(`Using tool: "${toolName}"...`);
+
+      const toolPrompt = await tool(
+        this,
+        {
+          files,
+          taskList,
+          task,
+          query,
+          currentSolution
         }
       );
-    });
 
-    console.log('Done.\nResetting git for the next task...');
+      if (!toolPrompt) continue;
 
-    await new Promise((resolve, reject) => {
-      exec(`cd ${gitPath} && git reset && git stash && git checkout master && git reset --hard HEAD`, (error, stdout, stderr) => {
-        if (error) {
-          console.error(`Error during git reset: ${error.message}`);
-          reject(error);
-        } else {
-          console.log(`Git reset: ${stdout}`);
-          resolve();
-        }
+      messages.push({
+        role: 'user',
+        content: toolPrompt
       });
-    });
 
-    console.log('Done.');
+      lastResponse = await this.chat(messages);
+
+      const matches = lastResponse.match(/```(?:[\w-]*\n)?([\s\S]*?)```/g);
+
+      currentSolution = matches?.length
+        ? matches.join('\n')
+        : lastResponse;
+
+      console.log(`Done using tool: "${toolName}".`);
+    }
+
+    return currentSolution;
   }
 
   async exec (previousSolution = '') {
-    const { tasks = [] } = await this.readBuzzConfig();
+    const { tasks = [] } = await this.readConfig();
 
     if (!tasks?.length) {
       console.log('No tasks to complete.');
@@ -540,109 +524,27 @@ class Agent extends RetrievalModel {
     });
   }
 
-  async task ({
-    files,
-    taskList,
-    task,
-    query,
-    currentSolution = ''
-  }) {
-    try {
-      console.log('\nAGENT QUERY:', query, '\n');
+  async load () {
+    console.log('Starting...');
 
-      const response = await this.query({
-        files,
-        taskList,
-        task,
-        query
-      });
+    const { gitPath, paths } = await this.readConfig();
 
-      console.log('\nAGENT RESPONSE:', response, '\n');
+    this.gitPath = path.resolve(__dirname, 'bucket', gitPath);
 
-      const matches = response.match(/```(?:[\w-]*\n)?([\s\S]*?)```/g);
+    console.log('Loading files from bucket...');
 
-      currentSolution = matches?.length
-        ? matches.join('\n')
-        : response;
+    const focusFiles = await this.loadFilesFromPaths(path.join(__dirname, 'bucket'));
 
-      await this.branchAndCommit({
-        files,
-        taskList,
-        task,
-        query,
-        currentSolution
-      });
+    console.log('Done.\nCreating vector stores...');
 
-      console.log(`\n✔ Finished task: ${task}.\n\nPruning task log...\n`);
+    const focusFileStore = await this.createVectorStore(focusFiles, 2);
 
-      const completedTask = await this.shiftTasks(taskList);
+    this.store = new VectorStore();
+    this.store.embeddings = [...focusFileStore.embeddings];
+    this.store.texts = [...focusFileStore.texts];
+    this.store.multipliers = [...focusFileStore.multipliers];
 
-      if (!completedTask) {
-        console.warn('\n× Failed to prune a completed task: ${task}.\n');
-      } else {
-        console.log('Done.');
-      }
-
-      await this.exec(currentSolution);
-    } catch (err) {
-      console.error('Error during task execution:', err.message);
-      process.exit(1);
-    }
-  }
-
-  async query ({
-    files,
-    taskList,
-    task,
-    query
-  }) {
-    let currentSolution = '';
-    let lastResponse = '';
-
-    const messages = [];
-
-    for (let i = 0; i < this.chain.length; i++) {
-      const toolName = this.chain[i];
-      const tool = this.tools[toolName];
-
-      if (!tool) {
-        console.warn(`Tool "${toolName}" not found. Skipping.`);
-
-        continue;
-      }
-
-      console.log(`Using tool: "${toolName}"...`);
-
-      const toolPrompt = await tool(
-        this,
-        {
-          files,
-          taskList,
-          task,
-          query,
-          currentSolution
-        }
-      );
-
-      if (!toolPrompt) continue;
-
-      messages.push({
-        role: 'user',
-        content: toolPrompt
-      });
-
-      lastResponse = await this.chat(messages);
-
-      const matches = lastResponse.match(/```(?:[\w-]*\n)?([\s\S]*?)```/g);
-
-      if (matches?.length) {
-        currentSolution = matches.join('\n');
-      }
-
-      console.log(`Done using tool: "${toolName}".`);
-    }
-
-    return lastResponse;
+    console.log('Done.\nAgent has started.');
   }
 
   async loadAndExec () {
