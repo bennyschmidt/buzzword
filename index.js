@@ -97,7 +97,7 @@ class VectorStore {
     this.multipliers.push(priorityMultiplier);
   }
 
-  search (queryEmbedding, topK = 3) {
+  search (queryEmbedding, topK = 1) {
     const similarities = this.embeddings.map((embedding, i) => {
       const rawSimilarity = VectorStore.getCosineSimilarity(queryEmbedding, embedding);
 
@@ -214,27 +214,16 @@ class RetrievalModel {
   }
 
   async loadFilesFromPaths (dirPath) {
-    const pathsFile = path.join(dirPath, 'paths.txt');
+    const buzzConfigPath = path.join(__dirname, 'buzz.json');
 
     try {
-      const pathsContent = await fs.readFile(pathsFile, 'utf-8');
+      const buzzConfig = JSON.parse(await fs.readFile(buzzConfigPath, 'utf-8'));
+      const { paths } = buzzConfig;
 
-      const filePaths = pathsContent
-        .split('\n')
-        .filter(line => line.trim() !== '')
-        .map(line => path.join(dirPath, line.trim()));
-
-      return filePaths;
+      return paths.map(filePath => path.join(dirPath, filePath));
     } catch (err) {
-      if (err.code === 'ENOENT') {
-        console.warn(`No paths.txt found in ${dirPath}. Skipping.`);
-
-        return [];
-      } else {
-        console.error(`Error reading paths.txt in ${dirPath}:`, err.message);
-
-        return [];
-      }
+      console.error(`Error reading buzz.json: ${err.message}`);
+      return [];
     }
   }
 
@@ -313,7 +302,7 @@ class RetrievalModel {
  * A retrieval model with tool support for more
  * control over the query lifecycle.
  *
- * Agent automatically reads tasks from "tasks.txt",
+ * Agent automatically reads tasks from "buzz.json",
  * processes them one by one, and commits solutions
  * to git.
  */
@@ -326,7 +315,11 @@ class Agent extends RetrievalModel {
   constructor (config = {}) {
     super(config);
 
-    this.tools = { ...Agent.tools, ...(config.tools || {}) };
+    this.tools = {
+      ...Agent.tools,
+      ...(config.tools || {})
+    };
+
     this.chain = config.chain || DEFAULT_TOOL_CHAIN;
 
     this.loadAndExec();
@@ -335,42 +328,36 @@ class Agent extends RetrievalModel {
   async load () {
     console.log('Loading vector stores...');
 
-    const gitPath = await this.getGitPath();
+    const buzzConfigPath = path.join(__dirname, 'buzz.json');
 
-    const lowPriorityFiles = await this.loadFilesFromPaths(path.join(__dirname, 'buckets/background'));
+    try {
+      const buzzConfig = JSON.parse(await fs.readFile(buzzConfigPath, 'utf-8'));
+      const { gitPath, paths } = buzzConfig;
 
-    const highPriorityFiles = await this.loadFilesFromPaths(path.join(__dirname, 'buckets/focus'));
+      this.gitPath = path.resolve(__dirname, 'bucket', gitPath);
 
-    const lowPriorityStore = await this.createVectorStore(lowPriorityFiles, 1);
+      const focusFiles = await this.loadFilesFromPaths(path.join(__dirname, 'bucket'));
 
-    const highPriorityStore = await this.createVectorStore(highPriorityFiles, 2);
+      const focusFileStore = await this.createVectorStore(focusFiles, 2);
 
-    this.store = new VectorStore();
-    this.store.embeddings = [...lowPriorityStore.embeddings, ...highPriorityStore.embeddings];
-    this.store.texts = [...lowPriorityStore.texts, ...highPriorityStore.texts];
-    this.store.multipliers = [...lowPriorityStore.multipliers, ...highPriorityStore.multipliers];
+      this.store = new VectorStore();
+      this.store.embeddings = [...focusFileStore.embeddings];
+      this.store.texts = [...focusFileStore.texts];
+      this.store.multipliers = [...focusFileStore.multipliers];
 
-    this.bucket = {
-      background: lowPriorityFiles,
-      focus: highPriorityFiles
-    };
-
-    console.log('Done.');
-  }
-
-  async getGitPath () {
-    const gitPathFile = path.join(__dirname, 'buckets/focus/gitpath.txt');
-
-    const gitPath = await fs.readFile(gitPathFile, 'utf-8');
-
-    return path.resolve(__dirname, 'buckets/focus', gitPath.trim());
+      console.log('Done.');
+    } catch (err) {
+      console.error(`Error loading buzz.json: ${err.message}`);
+      process.exit(1);
+    }
   }
 
   async readTopTask () {
-    try {
-      const tasksContent = await fs.readFile(path.join(__dirname, 'tasks.txt'), 'utf-8');
+    const buzzConfigPath = path.join(__dirname, 'buzz.json');
 
-      const tasks = tasksContent.split('\n').filter(task => task.trim() !== '');
+    try {
+      const buzzConfig = JSON.parse(await fs.readFile(buzzConfigPath, 'utf-8'));
+      const { tasks } = buzzConfig;
 
       if (tasks.length === 0) {
         console.log('All tasks complete!');
@@ -379,26 +366,30 @@ class Agent extends RetrievalModel {
 
       const topTask = tasks[0];
 
-      await fs.writeFile(path.join(__dirname, 'task.txt'), topTask);
+      await fs.writeFile(path.join(__dirname, '.task'), topTask);
 
       return { topTask, tasks };
     } catch (err) {
-      if (err.code === 'ENOENT') {
-        console.error('Error: The file "tasks.txt" could not be found in the project root directory.');
-      } else {
-        console.error('Error reading tasks file:', err.message);
-      }
-
+      console.error(`Error reading buzz.json: ${err.message}`);
       process.exit(1);
     }
   }
 
   async removeCompletedTask (tasks) {
-    const updatedTasks = tasks.slice(1).join('\n\n');
+    const buzzConfigPath = path.join(__dirname, 'buzz.json');
 
-    await fs.writeFile(path.join(__dirname, 'tasks.txt'), updatedTasks);
+    try {
+      const buzzConfig = JSON.parse(await fs.readFile(buzzConfigPath, 'utf-8'));
 
-    await fs.writeFile(path.join(__dirname, 'task.txt'), '');
+      buzzConfig.tasks = tasks.slice(1);
+
+      await fs.writeFile(buzzConfigPath, JSON.stringify(buzzConfig, null, 2));
+
+      await fs.writeFile(path.join(__dirname, '.task'), '');
+    } catch (err) {
+      console.error(`Error updating buzz.json: ${err.message}`);
+      process.exit(1);
+    }
   }
 
   async extractFilesAndTask (topTask) {
@@ -423,7 +414,7 @@ class Agent extends RetrievalModel {
   }
 
   async branchAndCommit (files, task, currentSolution) {
-    const gitPath = await this.getGitPath();
+    const gitPath = await this.gitPath;
 
     const [fileReference] = files;
     const fileContent = this.store.texts.find(text => text.match(`NAME: ${fileReference}`));
@@ -462,7 +453,9 @@ class Agent extends RetrievalModel {
       .toLowerCase()
       .replace(/[\s]+/g, '-')
       .substring(0, 50)
-      .replace(/\"/g, '')}`;
+      .replace(/\"/g, '')}-${
+        Date.now()
+      }`;
 
     const commitMessage = (await this.chat([
       {
@@ -471,32 +464,28 @@ class Agent extends RetrievalModel {
       },
     ])).replace(/^"|"$/g, '');
 
-    return new Promise((resolve, reject) => {
+    await new Promise((resolve, reject) => {
       exec(
         `cd ${gitPath} && git pull && git add ${targetFilePath} && git commit -m '${commitMessage}' && git checkout -b ${branchName} && git push`,
         (error, stdout, stderr) => {
           if (error) {
-            console.error(`Git error: ${stderr}`);
+            console.error(`Error pushing to git: ${stderr}`);
             reject(error);
           } else {
-            console.log(`Git operations completed: ${stdout}`);
+            console.log(`Successfully pushed to git: ${stdout}`);
             resolve();
           }
         }
       );
     });
-  }
 
-  async gitReady () {
-    const gitPath = await this.getGitPath();
-
-    return new Promise((resolve, reject) => {
+    await new Promise((resolve, reject) => {
       exec(`cd ${gitPath} && git reset && git stash && git checkout master && git reset --hard HEAD`, (error, stdout, stderr) => {
         if (error) {
           console.error(`Error during git reset: ${error.message}`);
           reject(error);
         } else {
-          console.log(`Git state reset: ${stdout}`);
+          console.log(`Git reset: ${stdout}`);
           resolve();
         }
       });
@@ -525,10 +514,6 @@ class Agent extends RetrievalModel {
       console.log(`Done with task ${task}.`);
 
       await this.removeCompletedTask(tasks);
-
-      await this.gitReady();
-
-      console.log('Task complete!');
 
       await this.exec();
     } catch (err) {
@@ -587,7 +572,7 @@ class Agent extends RetrievalModel {
 
 // Application
 
-async function main () {
+async function main() {
   new Agent();
 }
 
