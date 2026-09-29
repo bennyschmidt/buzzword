@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { exec } from 'node:child_process';
 
@@ -7,7 +8,7 @@ const GitPullRequestIntegrator = async (agent, { files, task, currentSolution = 
 
   const { gitPath: gitDir } = await agent.readConfig();
 
-  const gitPath = path.resolve(__dirname, 'bucket', gitDir);
+  const gitPath = path.resolve('bucket', gitDir);
   const [fileReference] = files;
   const fileContent = agent.store.texts.find(text => text.match(`NAME: ${fileReference}`));
 

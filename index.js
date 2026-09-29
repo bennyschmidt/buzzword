@@ -9,19 +9,22 @@ dotenv.config();
 
 import CodeCompletenessEvaluator from './tools/CodeCompletenessEvaluator/index.js';
 import CodeCreator from './tools/CodeCreator/index.js';
+import CodeFileDecorationCreator from './tools/CodeFileDecorationCreator/index.js';
 import CodeFileIntegrator from './tools/CodeFileIntegrator/index.js';
 import CodeIntegrator from './tools/CodeIntegrator/index.js';
 import CodeResponseEvaluator from './tools/CodeResponseEvaluator/index.js';
 import CorrectnessEvaluator from './tools/CorrectnessEvaluator/index.js';
+import FileIntegrator from './tools/FileIntegrator/index.js';
 import GitPullRequestIntegrator from './tools/GitPullRequestIntegrator/index.js';
 import JSCodeCreator from './tools/JSCodeCreator/index.js';
 import JSCodeFileCreator from './tools/JSCodeFileCreator/index.js';
 import NoDeviationEvaluator from './tools/NoDeviationEvaluator/index.js';
-import NoFileDeviationEvaluator from './tools/NoFileDeviationEvaluator/index.js';
-import CodeFileDecorationCreator from './tools/CodeFileDecorationCreator/index.js';
+import NoFileDeviationEvaluator from './tools/NoFileDeviationEvaluator/index.js'
+import ResearchCreator from './tools/ResearchCreator/index.js';
 import RetrievalAugmentedGeneration from './tools/RetrievalAugmentedGeneration/index.js';
 import VariableEvaluator from './tools/VariableEvaluator/index.js';
 import WeatherStamp from './tools/WeatherStamp/index.js';
+import WikiArticleIntegrator from './tools/WikiArticleIntegrator/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -52,7 +55,10 @@ const DEFAULT_TOOLS = {
   NoDeviationEvaluator,
   NoFileDeviationEvaluator,
   VariableEvaluator,
-  WeatherStamp
+  WeatherStamp,
+  ResearchCreator,
+  WikiArticleIntegrator,
+  FileIntegrator
 };
 
 /**
@@ -61,16 +67,25 @@ const DEFAULT_TOOLS = {
  * Setup for local JavaScript development.
  */
 
-const DEFAULT_TOOL_CHAIN = [
-  'JSCodeFileCreator',
-  'CodeFileIntegrator',
-  'VariableEvaluator',
-  'CodeCompletenessEvaluator',
-  'CorrectnessEvaluator',
-  'CodeResponseEvaluator',
-  'CodeFileDecorationCreator',
-  'GitPullRequestIntegrator'
-];
+ const TOOLCHAINS = {
+   JAVASCRIPT_DEVELOPER: [
+     'JSCodeFileCreator',
+     'CodeFileIntegrator',
+     'VariableEvaluator',
+     'CodeCompletenessEvaluator',
+     'CorrectnessEvaluator',
+     'CodeResponseEvaluator',
+     'CodeFileDecorationCreator',
+     'GitPullRequestIntegrator'
+   ],
+   WIKI_ARTICLE_WRITER: [
+     'ResearchCreator',
+     'WikiArticleIntegrator',
+     'FileIntegrator'
+   ]
+ };
+
+const DEFAULT_TOOL_CHAIN = TOOLCHAINS.WIKI_ARTICLE_WRITER;
 
 /**
  * VectorStore

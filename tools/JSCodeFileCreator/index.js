@@ -6,7 +6,7 @@ const JSCodeFileCreator = async (agent, { query, currentSolution = '' }) => {
 
   const coderResult = JSCodeCreator(agent, { query, currentSolution });
 
-  return `${codebaseResult}\n\nInstruction: ${coderResult}`;
+  return `${codebaseResult}\n\nINSTRUCTION: ${coderResult}`;
 };
 
 export default JSCodeFileCreator;

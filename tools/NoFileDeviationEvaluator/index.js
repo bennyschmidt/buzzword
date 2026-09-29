@@ -9,7 +9,7 @@ const NoFileDeviationEvaluator = async (agent, { query, currentSolution = '' }) 
 
   const toolResult = NoDeviationEvaluator(agent, query, currentSolution);
 
-  return `Source: ${documents.join('\n---\n')}\n\nSolution: ${currentSolution}\n\nInstruction: ${toolResult}`;
+  return `SOURCE: ${documents.join('\n---\n')}\n\nSOLUTION: ${currentSolution}\n\nINSTRUCTION: ${toolResult}`;
 };
 
 export default NoFileDeviationEvaluator;

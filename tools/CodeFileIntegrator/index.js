@@ -9,7 +9,7 @@ const CodeFileIntegrator = async (agent, { query, currentSolution = '' }) => {
 
   const toolResult = CodeIntegrator(agent, query, currentSolution);
 
-  return `Source: ${documents.join('\n---\n')}\n\nSolution: ${currentSolution}\n\nInstruction: ${toolResult}`;
+  return `SOURCE: ${documents.join('\n---\n')}\n\nSOLUTION: ${currentSolution}\n\nINSTRUCTION: ${toolResult}`;
 };
 
 export default CodeFileIntegrator;
