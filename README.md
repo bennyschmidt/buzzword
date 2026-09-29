@@ -58,6 +58,7 @@ Being able to dynamically manipulate the toolchain opens up a new tier of automa
     <tool name="FileIntegrator" />
   </toolchain>
 ``` 
+
 WIP 
 
 ## Retrieval Augmented Generation (RAG)
