@@ -1,9 +1,3 @@
-# Buzzword
-
-Define a list of tasks, add files for reference, run it with your favorite models on a capable machine.
-
-[buzzword-demo.mp4] 
-
 ## Agentic Automation
 
 LLMs can automate virtually any writing: Code, documentation, articles, comments, email replies, and so-on. But "one-shot" prompting an LLM often leaves much to be desired.
