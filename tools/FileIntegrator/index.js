@@ -3,8 +3,12 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { exec } from 'node:child_process';
 
+import Logger from '../../lib/Logger/index.js';
+
+const console = new Logger('FileIntegrator');
+
 const FileIntegrator = async (agent, { files, task, currentSolution = '' }) => {
-  console.log('Writing to file...');
+  console.comment('Writing to file...');
 
   const { gitPath: gitDir } = await agent.readConfig();
 
@@ -15,17 +19,17 @@ const FileIntegrator = async (agent, { files, task, currentSolution = '' }) => {
     match.replace(/```[\w-]*\n?|```/g, '')
   );
 
-  console.log('Writing solution to file...');
+  console.comment('Writing solution to file...');
 
   try {
     await fs.writeFile(targetFilePath, solutionContent);
   } catch (err) {
-    console.error(`\n× Failed to write to ${targetFilePath}:`, err.message);
+    console.error(`× Failed to write to ${targetFilePath}:`, err.message);
 
     return '';
   }
 
-  console.log('Done.');
+  console.success('Done.');
 
   return `File saved.`;
 };

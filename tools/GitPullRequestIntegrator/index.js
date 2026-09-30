@@ -3,8 +3,12 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { exec } from 'node:child_process';
 
+import Logger from '../../lib/Logger/index.js';
+
+const console = new Logger('GitPullRequestIntegrator');
+
 const GitPullRequestIntegrator = async (agent, { files, task, currentSolution = '' }) => {
-  console.log('Reading relevant file(s)...');
+  console.comment('Reading relevant file(s)...');
 
   const { gitPath: gitDir } = await agent.readConfig();
 
@@ -13,7 +17,7 @@ const GitPullRequestIntegrator = async (agent, { files, task, currentSolution = 
   const fileContent = agent.store.texts.find(text => text.match(`NAME: ${fileReference}`));
 
   if (!fileContent) {
-    console.warn(`\n× Failed to retrieve stored text for file "${fileReference}".\n`);
+    console.warn(`× Failed to retrieve stored text for file "${fileReference}".`);
 
     return '';
   }
@@ -21,7 +25,7 @@ const GitPullRequestIntegrator = async (agent, { files, task, currentSolution = 
   const filePath = fileContent.match(/FILE_PATH:\s*([^\s\*]+)/)?.[1]?.trim();
 
   if (!filePath) {
-    console.warn(`\n× Failed to extract FILE_PATH from file: "${fileReference}".\n`);
+    console.warn(`× Failed to extract FILE_PATH from file: "${fileReference}".`);
 
     return '';
   }
@@ -32,14 +36,14 @@ const GitPullRequestIntegrator = async (agent, { files, task, currentSolution = 
     match.replace(/```[\w-]*\n?|```/g, '')
   );
 
-  console.log('Writing solution to file...');
+  console.comment('Writing solution to file...');
 
   try {
     await fs.writeFile(targetFilePath, solutionContent);
 
-    console.log(`Done.\nUpdated ${targetFilePath}.`);
+    console.ok(`Done.\nUpdated ${targetFilePath}.`);
   } catch (err) {
-    console.error(`\n× Failed to write to ${targetFilePath}:`, err.message);
+    console.warn(`× Failed to write to ${targetFilePath}: ${err.message}`);
 
     return '';
   }
@@ -50,7 +54,7 @@ const GitPullRequestIntegrator = async (agent, { files, task, currentSolution = 
     .substring(0, 50)
     .replace(/\"/g, '')}-${Date.now()}`;
 
-  console.log('Creating a new branch in git...');
+  console.comment('Creating a new branch in git...');
 
   const commitMessage = (await agent.chat([
     {
@@ -59,7 +63,7 @@ const GitPullRequestIntegrator = async (agent, { files, task, currentSolution = 
     },
   ])).replace(/^"|"$/g, '');
 
-  console.log('Committing and pushing to git...');
+  console.comment('Committing and pushing to git...');
 
   await new Promise((resolve, reject) => {
     exec(
@@ -69,14 +73,15 @@ const GitPullRequestIntegrator = async (agent, { files, task, currentSolution = 
           console.error(`Error pushing to git: ${stderr}`);
           reject(error);
         } else {
-          console.log(`Successfully pushed to git: ${stdout}`);
+          console.comment(`Successfully pushed to git: ${stdout}`);
           resolve();
         }
       }
     );
   });
 
-  console.log('Done.\nResetting git for the next task...');
+  console.success('Done.');
+  console.comment('Resetting git for the next task...');
 
   await new Promise((resolve, reject) => {
     exec(`cd ${gitPath} && git reset && git stash && git checkout master && git reset --hard HEAD`, (error, stdout, stderr) => {
@@ -84,13 +89,13 @@ const GitPullRequestIntegrator = async (agent, { files, task, currentSolution = 
         console.error(`Error during git reset: ${error.message}`);
         reject(error);
       } else {
-        console.log(`Git reset: ${stdout}`);
+        console.comment(`Git reset: ${stdout}`);
         resolve();
       }
     });
   });
 
-  console.log('Done.');
+  console.success('Done.');
 
   return `Saved to ${targetFilePath}, committed, and pushed to a new branch "${branchName}".`;
 };
