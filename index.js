@@ -118,6 +118,4 @@ const WikiWriter = {
   ]
 };
 
-const buzzword = new System(WikiWriter);
-
-console.log('buzzword', buzzword);
+new System(WikiWriter);
