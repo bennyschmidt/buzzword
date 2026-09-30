@@ -34,7 +34,7 @@ For large tasks with many different areas of focus, entire toolchains might be r
 
 Being able to dynamically manipulate the toolchain opens up a new tier of automation where the agent is no longer just producing text, but observing the results of its work along the way and deciding the appropriate course of action given the tools available. The more useful tools the agent has, the more useful work it can do. 
 
-## Declarative Markup 
+## Declarative Tooling
 
 ```html
   <!-- A toolchain for JavaScript coding tasks -->
@@ -69,14 +69,114 @@ The `Agent` class exposes a built-in `store` (instance of `VectorStore`), embedd
 
 In the built-in vector store, files are split by `<!NEW FILE>` and `<!END OF FILE>` tags, respectively. These tags must be added to files in the bucket in order to be included in the vector store by default. Decoration around these tags is not very strict, but may add small amounts of unwanted noise in retrieval (e.g. both `<!-- <!NEW FILE> -->` and `/* <!NEW FILE> */`, and other forms of comment syntax will still work). If iterating on a code repo, it's recommend to create tool(s) that either preserve or add these tags to files when done editing them, so that the next agent can reference them in the store. 
 
-WIP
-
 ## Tasks & Reference
 
-TODO: `buzz.json` 
+`buzz.json` 
+
+```json
+{
+  "gitPath": "",
+  "paths": [],
+  "tasks": []
+}
+```
 
 WIP
+
+## Agent Hooks
+
+API endpoints that invoke toolchains upon request. 
+
+WIP 
+
+## Declarative Tasking
+
+```html
+  <!-- A simple task list -->
+
+  <tasklist name="finish the about page">
+    <task files="AboutPage" name="new heading">
+      Add a title with an h1 tag "The Company" with var(--font) and under that a <h3>Meet our team</h3> in sans-serif, size 14px.
+    </task>
+    <task files="AboutPage" name="add a gallery">
+      Add a photo gallery (use some popular npm for it) to navigate through all the images in /images and provide fullscreen previews.
+    </task>
+    <task files="Navigation" name="add the about page to the nav">
+      Add the new AboutPage to the nav. 
+    </task>
+  </tasklist>
+```
+
+WIP 
+
+#### Generative Tasking
+
+Just as tools can manipulate their toolchains, a tasklist can self-implement with a `goal` attribute. Include them in your toolchain to automatically generate and/or audit tasklists.
+
+```html
+  <!-- A self-generating tasklist -->
+  <tasklist name="finish the about page" goal="add mobile/responsive styles" />
+```
+
+> [!NOTE]
+> This is accomplished with the built-in `TaskListCreator` and `TaskListEvaluator` tool(s). 
+
+WIP 
+
+## todo.html
+
+A `todo.html` is an HTML file that automatically executes any agentic work defined therein. There are two main sections needed in a `todo.html`:
+
+• The `Toolchain`
+
+`<toolchain />` elements are definition blocks. Think of them like imports - they don't run the code in the `<tool />`, they only define which should run (and in which order). Several `<toolchain />` blocks in a `todo.html` just means you are defining multiple agentic flows (which may or may not be invoked).
+
+• The `Tasklist`
+
+`<tasklist />` elements, and each `<task />` therein, will run just by being present in the file. If the file is manipulated in JavaScript during run-time, the changes will be picked up by Buzzword immediately. If there are multiple `<tasklist />` blocks, they will run in order from top-to-bottom. 
+
+```html
+  <!doctype html>
+  <html lang="en">
+    <toolchain name="WikiArticleWriter">
+      <tool name="ResearchCreator" />
+      <tool name="WikiArticleIntegrator" />
+      <tool name="FileIntegrator" />
+    </toolchain>
+    <tasklist name="Solar System Wiki">
+      <task files="sun-info.txt" name="Create a wiki article about: The Sun" />
+      <task files="mercury-info.txt" name="Create a wiki article about: Mercury" />
+      <task files="venus-info.txt" name="Create a wiki article about: Venus" />
+      <task files="earth-info.txt" name="Create a wiki article about: Earth" />
+      <task files="mars-info.txt" name="Create a wiki article about: Mars" />
+      <task files="jupiter-info.txt" name="Create a wiki article about: Jupiter" />
+      <task files="saturn-info.txt" name="Create a wiki article about: Saturn" />
+      <task files="uranus-info.txt" name="Create a wiki article about: Uranus" />
+      <task files="neptune-info.txt" name="Create a wiki article about: Neptune" />
+      <!-- <task files="pluto-info.txt" name="Create a wiki article about: Pluto" /> -->
+    </tasklist>
+  </html>
+```
+
+> [!NOTE]
+> Whatever is added to the HTML text is executed, even during run-time, just like an HTML web page.
+
+WIP
+
+## Agentic Development Is Declarative
+
+If large model ML is the "back-end", and prompt engineering is the "front-end", then this library and framework aims to be like a "React" for agentic development, for projects with dynamic workflows that have complex states and conditions. 
+
+#### Bring Your Own Model 
+
+Since the focus is on workflows, rather than model performance (e.g. training and fine-tuning), Buzzword is entirely BYOM, in the same way that React is BYOB (browser). The only compliance it will even ask of that is the OpenAPI 3.0 spec that most modern LLMs and wrappers use for model requests.
+
+#### Next Logical Step
+
+Until ~1999, browsers didn't have a modern HTML runtime that would update a page dynamically. Though you could link to other pages, the page load was the only event - there was no lifecycle until the advent of DHTML. So, in these early days of LLMs, there is a parallel: The user is largely still driving them manually. But with just a little bit of state and condition management, the read-only, static LLM can be transformed to be dynamic, animated, event-driven, and even self-improving.
 
 ## (Meta) Contributing 
 
-Buzzword can even be used to contribute to itself. Have a feature you want to add or change in Buzzword? Drop this entire repo into the bucket directory and define your task(s) and tool(s). You can even use a tool to handle the forking and open the PR. 
+Buzzword can be used to contribute to itself. Have a feature you want to add or change in Buzzword? Add the `index.js` file from this repo into the bucket directory with `<!NEW FILE>`/`<!END OF FILE>` tags, and define your task(s) and tool(s). Your agent will work tirelessly until its tasks are complete!
+
+You could even use a tool to handle the forking of the repo, and opening a PR with your changes. 
