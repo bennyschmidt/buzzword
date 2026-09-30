@@ -4,7 +4,7 @@ LLMs can automate virtually any writing: Code, documentation, articles, comments
 
 [one-shot-prompt.png] 
 
-Instead of hoping it works the first time, or arguing back-and-forth with the LLM like a maniac, you can greatly improve the quality of automated results and the size of the workload by setting up a *prompt pipeline* that iteratively prompts the LLM with pre-defined functionality while you're away.
+Instead of hoping it works the first time, or arguing back-and-forth with the LLM like a maniac, you can greatly improve the quality of automated results and the size of the workload by setting up an iterative prompt pipeline that repeatedly uses the LLM with pre-defined functionality while you're away.
 
 The use of these declarative pipelines - or "tools" - is what turns a mere read-only LLM into a powerful "agent" that can read and create files, integrate them with other files and services, evaluate them for quality and correctness, and even flush the context of a previous task and load up another one - repeatedly.
 
@@ -121,13 +121,13 @@ WIP
 
 A `todo.html` is an HTML file that automatically executes any agentic work defined therein. There are two main sections needed in a `todo.html`:
 
-• The `Toolchain`
+• The `Toolchain` (the "to!")
 
-`<toolchain />` elements are definition blocks. Think of them like imports - they don't run the code in the `<tool />`, they only define which should run (and in which order). Several `<toolchain />` blocks in a `todo.html` just means you are defining multiple agentic flows (which may or may not be invoked).
+`<toolchain />` elements are definition blocks. Think of them like imports - they don't run the code in the `<tool />` immediately, they only define which should run (and in which order). If the file is manipulated in JavaScript during run-time, the changes will be picked up by Buzzword before the next tool invocation. If there are multiple `<toolchain />` blocks, they will be defined in order from top-to-bottom. 
 
-• The `Tasklist`
+• The `Tasklist` (the "do!")
 
-`<tasklist />` elements, and each `<task />` therein, will run just by being present in the file. If the file is manipulated in JavaScript during run-time, the changes will be picked up by Buzzword immediately. If there are multiple `<tasklist />` blocks, they will run in order from top-to-bottom. 
+`<tasklist />` elements, and each `<task />` therein, will run just by being present in the file. If the file is manipulated in JavaScript during run-time, the changes will be picked up by Buzzword before the next task starts. If there are multiple `<tasklist />` blocks, they will run in order from top-to-bottom. 
 
 ```html
   <!doctype html>
