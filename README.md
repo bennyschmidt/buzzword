@@ -4,7 +4,7 @@ LLMs can produce virtually any kind of writing: Code, documentation, articles, c
 
 <img width="1280" height="700" alt="one-shot-fail" src="https://github.com/user-attachments/assets/8180bbaf-33be-4421-af9b-126386ea94bc" />
 
-###### Above: LLMs are read-only with limited access to the Internet.
+###### Above: Popular chat models are read-only with limited access to the Internet.
 
 Instead of hoping it works the first time, or arguing back-and-forth with the LLM like a maniac, you can greatly improve the quality of automated results and the size of the workload by setting up an iterative prompt pipeline that repeatedly uses the LLM with pre-defined functionality while you're away.
 
