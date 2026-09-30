@@ -1,10 +1,42 @@
 ## Agentic Automation
 
-LLMs can automate virtually any writing: Code, documentation, articles, comments, email replies, and so-on. But "one-shot" prompting an LLM often leaves much to be desired.
+LLMs can produce virtually any kind of writing: Code, documentation, articles, comments, email replies, and so-on. But "one-shot" prompting an LLM often leaves much to be desired.
 
-[one-shot-prompt.png] 
+<img width="1280" height="700" alt="one-shot-fail" src="https://github.com/user-attachments/assets/8180bbaf-33be-4421-af9b-126386ea94bc" />
+
+###### Above: LLMs are offline and read-only.
 
 Instead of hoping it works the first time, or arguing back-and-forth with the LLM like a maniac, you can greatly improve the quality of automated results and the size of the workload by setting up an iterative prompt pipeline that repeatedly uses the LLM with pre-defined functionality while you're away.
+
+```javascript
+
+...
+
+      console.info(`Using tool: "${toolName}"...`);
+
+      const toolPrompt = await tool(
+        this,
+        {
+          files,
+          taskList,
+          task,
+          query,
+          currentSolution
+        }
+      );
+
+      if (!toolPrompt) continue;
+
+      messages.push({
+        role: 'user',
+        content: toolPrompt
+      });
+
+...
+
+```
+
+###### Above: The `Agent` class passes the prompt through a toolchain.
 
 The use of these declarative pipelines - or "tools" - is what turns a mere read-only LLM into a powerful "agent" that can read and create files, integrate them with other files and services, evaluate them for quality and correctness, and even flush the context of a previous task and load up another one - repeatedly.
 
@@ -12,23 +44,49 @@ The use of these declarative pipelines - or "tools" - is what turns a mere read-
 
 Any function that returns a string can be a tool. After the initial prompt and response from a model's `chat` method, instead of just returning the answer, a "toolchain" (a declarative list of functions) is invoked to augment and iteratively use the LLM - where a tool's response is passed to the subsequent tool along with contextual information about the task and query, down a "chain" or pipeline of functions that result in a final response or action.
 
-[buzzword-tool.png] 
+```javascript
+
+...
+
+  const branchName = `${agent.MODEL}/${task
+    .toLowerCase()
+    .replace(/[\s]+/g, '-')
+    .substring(0, 50)
+    .replace(/\"/g, '')}-${Date.now()}`;
+
+  console.comment('Creating a new branch in git...');
+
+  const commitMessage = (await agent.chat([
+    {
+      role: 'user',
+      content: `Generate a concise commit message for the following task: ${task}.\n\nDon't include any other details in your response.`,
+    },
+  ])).replace(/^"|"$/g, '');
+
+  console.comment('Committing and pushing to git...');
+
+...
+
+```
+
+###### Above: The built-in tool `GitPullRequestIntegrator` pushes a solution to a git branch.
 
 For example, the first tool in a chain might fetch time-sensitive content at the moment of invocation and produce a written report, saving it to the hard drive. Another tool might take that report and produce an HTML page from it, before passing it to a tool that pushes it to a git repo to be deployed. Another may add interactive widgets and graphics, and then open a PR for review. Tools can be chained for as long as there is iterative work to be done on a task. 
 
-[buzzword-simple-tool.png] 
+```javascript
+
+const PirateStyler = (_, { currentSolution = '' }) => `SOLUTION: ${currentSolution}\n\nQUERY:Transform the solution into pirate-speak and output the entire solution only. Don't include any other details in your response.`;
+
+export default PirateStyler;
+```
+
+###### Above: A simple tool that would transform the answer into pirate-speak. 
 
 A tool can be as simple or as comprehensive as you want, but typically single-purpose tooling works best and makes for a more robust and modular tool library. 
 
 #### Toolchain Manipulation
 
 For large tasks with many different areas of focus, entire toolchains might be ran in succession or in parallel to tackle the different aspects of work related to the overall goal. This can be accomplished by defining toolchains up-front and then creating specialty tools that swap them in, add/remove tools, restart the chain, and so-on, based on some state or event, like user (or network) input, time elapsed, the result of some prior tool in the chain, etc. 
-
-[toolchain-markup.png] 
-
-Being able to dynamically manipulate the toolchain opens up a new tier of automation where the agent is no longer just producing text, but observing the results of its work along the way and deciding the appropriate course of action given the tools available. The more useful tools the agent has, the more useful work it can do. 
-
-## Declarative Tooling
 
 ```html
   <!-- A toolchain for JavaScript coding tasks -->
@@ -55,6 +113,8 @@ Being able to dynamically manipulate the toolchain opens up a new tier of automa
 
 WIP 
 
+Being able to dynamically manipulate the toolchain opens up a new tier of automation where the agent is no longer just producing text, but observing the results of its work along the way and deciding the appropriate course of action given the tools available. The more useful tools the agent has, the more useful work it can do. 
+
 ## Retrieval Augmented Generation (RAG)
 
 The `Agent` class exposes a built-in `store` (instance of `VectorStore`), embedding all the files in `bucket`. This allows users to perform queries against their own files for highly accurate writing and code. The built-in `RetrievalAugmentedGeneration` tool (which performs a basic RAG query against the default bucket), relies on this vector store. 
@@ -65,7 +125,7 @@ In the built-in vector store, files are split by `<!NEW FILE>` and `<!END OF FIL
 
 ## Tasks & Reference
 
-`buzz.json` 
+An empty `buzz.json` file:
 
 ```json
 {
@@ -75,11 +135,32 @@ In the built-in vector store, files are split by `<!NEW FILE>` and `<!END OF FIL
 }
 ```
 
-WIP
+An example `buzz.json` file:
+
+```json
+{
+  "gitPath": "planets-wiki",
+  "paths": [
+    "planets-wiki/sun-info.txt",
+    "planets-wiki/mercury-info.txt",
+    "planets-wiki/venus-info.txt",
+    "planets-wiki/earth-info.txt",
+    "planets-wiki/mars-info.txt",
+    "planets-wiki/jupiter-info.txt",
+    "planets-wiki/saturn-info.txt",
+    "planets-wiki/uranus-info.txt",
+    "planets-wiki/neptune-info.txt",
+    "planets-wiki/pluto-info.txt"
+  ],
+  "tasks": [
+    "[FILES: -] [TASK: create a wiki article] Create a wiki article about the Sun."
+  ]
+}
+```
 
 ## Agent Hooks
 
-API endpoints that invoke toolchains upon request. 
+Deploy network event driven work by configuring toolchains and invoking the agent on HTTP request.
 
 WIP 
 
@@ -156,18 +237,6 @@ A `todo.html` is an HTML file that automatically executes any agentic work defin
 > Whatever is added to the HTML text is executed, even during run-time, just like an HTML web page.
 
 WIP
-
-## Agentic Development Is Declarative
-
-If large model ML is the "back-end", and prompt engineering is the "front-end", then this library and framework aims to be like a "React" for agentic development, for projects with dynamic workflows that have complex states and conditions. 
-
-#### Bring Your Own Model 
-
-Since the focus is on workflows, rather than model performance (e.g. training and fine-tuning), Buzzword is entirely BYOM, in the same way that React is BYOB (browser). The only compliance it will even ask of that is the OpenAPI 3.0 spec that most modern LLMs and wrappers use for model requests.
-
-#### Next Logical Step
-
-Until ~1999, browsers didn't have a modern HTML runtime that would update a page dynamically. Though you could link to other pages, the page load was the only event - there was no lifecycle until the advent of DHTML. So, in these early days of LLMs, there is a parallel: The user is largely still driving them manually. But with just a little bit of state and condition management, the read-only, static LLM can be transformed to be dynamic, animated, event-driven, and even self-improving.
 
 ## (Meta) Contributing 
 
