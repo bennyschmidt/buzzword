@@ -1,8 +1,6 @@
 import fs from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { exec } from 'node:child_process';
-
 import Logger from '../../lib/Logger/index.js';
 
 const console = new Logger('GitPullRequestIntegrator');
@@ -10,15 +8,14 @@ const console = new Logger('GitPullRequestIntegrator');
 const GitPullRequestIntegrator = async (agent, { files, task, currentSolution = '' }) => {
   console.comment('Reading relevant file(s)...');
 
-  const { gitPath: gitDir } = await agent.readConfig();
-
+  const { gitPath: gitDir, model: agentModel } = await agent.readConfig();
   const gitPath = path.resolve('bucket', gitDir);
   const [fileReference] = files;
+
   const fileContent = agent.store.texts.find(text => text.match(`NAME: ${fileReference}`));
 
   if (!fileContent) {
     console.warn(`× Failed to retrieve stored text for file "${fileReference}".`);
-
     return '';
   }
 
@@ -26,12 +23,10 @@ const GitPullRequestIntegrator = async (agent, { files, task, currentSolution = 
 
   if (!filePath) {
     console.warn(`× Failed to extract FILE_PATH from file: "${fileReference}".`);
-
     return '';
   }
 
   const targetFilePath = path.join(gitPath, filePath);
-
   const solutionContent = currentSolution.replace(/```(?:[\w-]*\n)?([\s\S]*?)```/g, (match) =>
     match.replace(/```[\w-]*\n?|```/g, '')
   );
@@ -40,15 +35,13 @@ const GitPullRequestIntegrator = async (agent, { files, task, currentSolution = 
 
   try {
     await fs.writeFile(targetFilePath, solutionContent);
-
     console.ok(`Done.\nUpdated ${targetFilePath}.`);
   } catch (err) {
     console.warn(`× Failed to write to ${targetFilePath}: ${err.message}`);
-
     return '';
   }
 
-  const branchName = `${agent.MODEL || 'coder-14'}/${task
+  const branchName = `${agentModel || 'coder-14'}/${task
     .toLowerCase()
     .replace(/[\s]+/g, '-')
     .substring(0, 50)
@@ -61,7 +54,7 @@ const GitPullRequestIntegrator = async (agent, { files, task, currentSolution = 
       role: 'user',
       content: `Generate a concise commit message for the following task: ${task}.\n\nDon't include any other details in your response.`,
     },
-  ])).replace(/^"|"$/g, '');
+  ])).replace(/^"|"\$/g, '');
 
   console.comment('Committing and pushing to git...');
 
@@ -96,7 +89,6 @@ const GitPullRequestIntegrator = async (agent, { files, task, currentSolution = 
   });
 
   console.success('Done.');
-
   return `Saved to ${targetFilePath}, committed, and pushed to a new branch "${branchName}".`;
 };
 
