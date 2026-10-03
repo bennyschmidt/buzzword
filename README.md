@@ -97,6 +97,7 @@ For large tasks with many different areas of focus, entire toolchains might be r
     <FileIntegrator />
   }
 ```
+###### Above: `agent.glyph` is written in Glyphic (similar to JavaScript with JSX).
 
 Being able to dynamically manipulate the toolchain opens up a new tier of automation where the agent is no longer just producing text, but observing the results of its work along the way and deciding the appropriate course of action given the tools available. The more useful tools the agent has, the more useful work it can do.
 
@@ -194,6 +195,7 @@ agent "Star Trek Wiki Site Creator" {
   }
 }
 ```
+##### Above: Custom tools can be written in Glyphic or Node.js (to which they are compiled)
 
 > [!NOTE]
 > Whatever is added to the .glyph file text is executed, even during run-time, just like an HTML web page.
@@ -201,3 +203,9 @@ agent "Star Trek Wiki Site Creator" {
 ## (Meta) Contributing
 
 Buzzword can be used to contribute to itself. Have a feature you want to add or change in Buzzword? Add this repo to the bucket directory with `<!NEW FILE>`/`<!END OF FILE>` tags around relevant files, and define your task(s) and tool(s). Your agent will work tirelessly until its tasks are complete!
+
+-----
+
+Learn more about the Glyphic language: [Glyphic](https://github.com/bennyschmidt/glyphic)
+
+Looking for the web API & UI for Buzzword? Try [Buzzsaw](https://github.com/bennyschmidt/buzzsaw) 
