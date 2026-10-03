@@ -89,26 +89,13 @@ A tool can be as simple or as comprehensive as you want, but typically single-pu
 For large tasks with many different areas of focus, entire toolchains might be ran in succession or in parallel to tackle the different aspects of work related to the overall goal. This can be accomplished by defining toolchains up-front and then creating specialty tools that swap them in, add/remove tools, restart the chain, and so-on, based on some state or event, like user (or network) input, time elapsed, the result of some prior tool in the chain, etc.
 
 ```html
-  <!-- A toolchain for JavaScript coding tasks -->
-
-  <toolchain name="JSDeveloper">
-    <tool name="JSCodeFileCreator" />
-    <tool name="CodeFileIntegrator" />
-    <tool name="VariableEvaluator" />
-    <tool name="CodeCompletenessEvaluator" />
-    <tool name="CorrectnessEvaluator" />
-    <tool name="CodeResponseEvaluator" />
-    <tool name="CodeFileDecorationCreator" />
-    <tool name="GitPullRequestIntegrator" />
-  </toolchain>
-
   <!-- A toolchain for creating Wiki style HTML pages -->
 
-  <toolchain name="WikiArticleWriter">
-    <tool name="ResearchCreator" />
-    <tool name="WikiArticleIntegrator" />
-    <tool name="FileIntegrator" />
-  </toolchain>
+  toolchain "WikiArticleWriter" {
+    <ResearchCreator />
+    <WikiArticleIntegrator />
+    <FileIntegrator />
+  }
 ```
 
 Being able to dynamically manipulate the toolchain opens up a new tier of automation where the agent is no longer just producing text, but observing the results of its work along the way and deciding the appropriate course of action given the tools available. The more useful tools the agent has, the more useful work it can do.
@@ -126,103 +113,91 @@ In the built-in vector store, files are split by `<!NEW FILE>` and `<!END OF FIL
 ```html
   <!-- A simple task list -->
 
-  <tasklist name="finish the about page">
-    <task files="AboutPage" name="new heading">
-      Add a title with an h1 tag "The Company" with var(--font) and under that a <h3>Meet our team</h3> in sans-serif, size 14px.
+  tasklist "Solar System Wiki" {
+    <task completed "Create a wiki article about: The Sun" />
+    <task completed "Create a wiki article about: Mercury" />
+    <task completed "Create a wiki article about: Venus">
+      "Write this one in Spanish."
     </task>
-    <task files="AboutPage" name="add a gallery">
-      Add a photo gallery (use some popular npm for it) to navigate through all the images in /images and provide fullscreen previews.
-    </task>
-    <task files="Navigation" name="add the about page to the nav">
-      Add the new AboutPage to the nav.
-    </task>
-  </tasklist>
+    <task active "Create a wiki article about: Earth" />
+    <task "Create a wiki article about: Mars" />
+    <task "Create a wiki article about: Jupiter" />
+    <task "Create a wiki article about: Saturn" />
+    <task "Create a wiki article about: Uranus" />
+    <task "Create a wiki article about: Neptune" />
+    // <task "Create a wiki article about: Pluto" />
+  }
 ```
 
-#### Generative Tasking
+## agent.glyph
 
-Just as tools can manipulate their toolchains, a tasklist can self-implement with a `goal` attribute. Include them in your toolchain to automatically generate and/or audit tasklists.
-
-```html
-  <!-- A self-generating tasklist -->
-  <tasklist name="finish the about page" goal="add mobile/responsive styles" />
-```
-
-> [!NOTE]
-> This is accomplished with the built-in `TaskListCreator` and `TaskListEvaluator` tool(s).
-
-WIP
-
-## agent.html
-
-`agent.html` is an HTML file that automatically executes any agentic work defined therein. The two main sections needed in a `agent.html`:
+`agent.glyph` is a file that defines agentic work to be done. The two main sections needed in the `agent.glyph`:
 
 • The `Toolchain`
 
-`<toolchain />` elements are definition blocks. Think of them like imports - they don't run the code in the `<tool />` immediately, they only define which should run (and in which order). If the file is manipulated in JavaScript during run-time, the changes will be picked up by Buzzword before the next tool invocation. If there are multiple `<toolchain />` blocks, they will each run the same tasks in parallel. To run in order from top-to-bottom they must be inside a parent `<toolchain />`. Nesting `<toolchain />` will effectively append the tools therein to the parent.
+`toolchain` elements are definition blocks. Think of them like imports - they don't run the code in the `<tool />` immediately, they only define which should run (and in which order). If the file is manipulated in JavaScript during run-time, the changes will be picked up by Buzzword before the next tool invocation. If there are multiple `toolchain` blocks, they will each run the same tasks in parallel. To run in order from top-to-bottom they must be inside a parent `toolchain`. Nesting `toolchain` will effectively append the tools therein to the parent.
 
 • The `Tasklist`
 
-`<tasklist />` elements, and each `<task />` therein, will run just by being present in the file. If the file is manipulated in JavaScript during run-time, the changes will be picked up by Buzzword before the next task starts. If there are multiple `<tasklist />` blocks, they will run in parallel. To run in order from top-to-bottom they must be inside a parent `<tasklist />`. Nesting `<tasklist />` will effectively append the tasks therein to the parent.
+`tasklist` elements, and each `<task />` therein, will run just by being present in the file. If the file is manipulated in JavaScript during run-time, the changes will be picked up by Buzzword before the next task starts. If there are multiple `tasklist` blocks, they will run in parallel. To run in order from top-to-bottom they must be inside a parent `tasklist`. Nesting `tasklist` will effectively append the tasks therein to the parent.
 
-Configuration tags:
+```javascript
+agent "Star Trek Wiki Site Creator" {
+  [model]  : "coder-14"
+  [embedModel] : "nomic-embed-text"
+  [bucket] : "solar-system-wiki"
+  [git]    : "solar-system-wiki"
 
-• `<namspace />`
+  toolchain "WikiArticleWriter" {
+    <ResearchCreator />
+    <WikiArticleIntegrator />
+    <FileIntegrator />
 
-• `<model />`
+    <tool "GitBranchIntegrator" [agent, files, task, solution]>
+      [log]       : Logger("GitBranchIntegrator")
+      [config]    : agent.readConfig()
+      [gitPath]   : "bucket" / config.gitPath
+      [fileRef]   : files.first()
+      [content]   : agent.store.texts.find("NAME: \$fileRef")
+      [filePath]  : content.match(/FILE_PATH:\s*([^\s\*]+)/)?.trim()
+      [target]    : gitPath / filePath
+      [branch]    : "\${config.model || 'coder-14'}"
+      [cleanSolution] : solution.strip('```')
+      [commitMessage] : agent.chat("Generate concise commit message for: $task")
 
-• `<bucket />`
+      log.comment("Writing solution to file...")
+      file.write(target, cleanSolution)
 
-• `<git />`
+      log.comment("Committing and pushing to git...")
+      shell("cd $gitPath && git pull && git add $target && git commit -m '$commitMessage' && git checkout -b $branch && git push")
 
-```html
-<!doctype html>
-<html lang="en">
-  <head>
-    <namespace>WikiWriter</namespace>
-    <model name="coder-14" />
-    <bucket model="nomic-embed-text">
-      <file name="The Sun" path="solar-system-wiki/sun-info.txt" />
-      <file name="Mercury" path="solar-system-wiki/mercury-info.txt" />
-      <file name="Venus" path="solar-system-wiki/venus-info.txt" />
-      <file name="Earth" path="solar-system-wiki/earth-info.txt" />
-      <file name="Mars" path="solar-system-wiki/mars-info.txt" />
-      <file name="Jupiter" path="solar-system-wiki/jupiter-info.txt" />
-      <file name="Saturn" path="solar-system-wiki/saturn-info.txt" />
-      <file name="Uranus" path="solar-system-wiki/uranus-info.txt" />
-      <file name="Neptune" path="solar-system-wiki/neptune-info.txt" />
-    </bucket>
-    <git path="solar-system-wiki" />
-  </head>
-  <body>
-    <toolchain name="WikiArticleWriter">
-      <tool name="ResearchCreator" />
-      <tool name="WikiArticleIntegrator" />
-      <tool name="FileIntegrator" />
-    </toolchain>
-    <tasklist name="Solar System Wiki">
-      <task completed files="" name="Create a wiki article about: The Sun" />
-      <task completed files="" name="Create a wiki article about: Mercury" />
-      <task active files="" name="Create a wiki article about: Venus">
-        Write this one in Spanish.
-      </task>
-      <task files="" name="Create a wiki article about: Earth" />
-      <task files="" name="Create a wiki article about: Mars" />
-      <task files="" name="Create a wiki article about: Jupiter" />
-      <task files="" name="Create a wiki article about: Saturn" />
-      <task files="" name="Create a wiki article about: Uranus" />
-      <task files="" name="Create a wiki article about: Neptune" />
-      <!-- <task files="" name="Create a wiki article about: Pluto" /> -->
-    </tasklist>
-  </body>
-</html>
+      log.comment("Resetting git...")
+      shell("cd $gitPath && git reset && git stash && git checkout master && git reset --hard HEAD")
+
+      return "Saved to $target, committed, and pushed to a new branch \"$branch\"."
+    </tool>
+  }
+
+  tasklist "Solar System Wiki" {
+    <task completed "Create a wiki article about: The Sun" />
+    <task completed "Create a wiki article about: Mercury" />
+    <task completed "Create a wiki article about: Venus">
+      "Write this one in Spanish."
+    </task>
+    <task active "Create a wiki article about: Earth" />
+    <task "Create a wiki article about: Mars" />
+    <task "Create a wiki article about: Jupiter" />
+    <task "Create a wiki article about: Saturn" />
+    <task "Create a wiki article about: Uranus" />
+    <task "Create a wiki article about: Neptune" />
+    // <task "Create a wiki article about: Pluto" />
+  }
+}
 ```
 
 > [!NOTE]
-> Whatever is added to the HTML text is executed, even during run-time, just like an HTML web page.
+> Whatever is added to the .glyph file text is executed, even during run-time, just like an HTML web page.
 
 ## (Meta) Contributing
 
-Buzzword can be used to contribute to itself. Have a feature you want to add or change in Buzzword? Add the `index.js` file from this repo into the bucket directory with `<!NEW FILE>`/`<!END OF FILE>` tags, and define your task(s) and tool(s). Your agent will work tirelessly until its tasks are complete!
-
-You could even use a tool to handle the forking of the repo, and opening a PR with your changes.
+Buzzword can be used to contribute to itself. Have a feature you want to add or change in Buzzword? Add this repo to the bucket directory with `<!NEW FILE>`/`<!END OF FILE>` tags around relevant files, and define your task(s) and tool(s). Your agent will work tirelessly until its tasks are complete!

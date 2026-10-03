@@ -1,0 +1,27 @@
+agent "Star Trek Wiki Site Creator" {
+  [model]  : "coder-14"
+  [embedModel] : "nomic-embed-text"
+  [bucket] : "solar-system-wiki"
+  [git]    : "solar-system-wiki"
+
+  toolchain "WikiArticleWriter" {
+    <ResearchCreator />
+    <WikiArticleIntegrator />
+    <FileIntegrator />
+  }
+
+  tasklist "Solar System Wiki" {
+    <task completed "Create a wiki article about: The Sun" />
+    <task "Create a wiki article about: Mercury" />
+    <task "Create a wiki article about: Venus">
+      "Write this one in Spanish."
+    </task>
+    <task "Create a wiki article about: Earth" />
+    <task "Create a wiki article about: Mars" />
+    <task active "Create a wiki article about: Jupiter" />
+    <task "Create a wiki article about: Saturn" />
+    <task "Create a wiki article about: Uranus" />
+    <task "Create a wiki article about: Neptune" />
+    // <task "Create a wiki article about: Pluto" />
+  }
+}
