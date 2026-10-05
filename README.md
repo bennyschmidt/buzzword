@@ -107,7 +107,9 @@ The `Agent` class exposes a built-in `store` (instance of `VectorStore`), embedd
 
 #### File Chunking
 
-In the built-in vector store, files are split by `<!NEW FILE>` and `<!END OF FILE>` tags, respectively. These tags must be added to files in the bucket in order to be included in the vector store by default. Decoration around these tags is not very strict, but may add small amounts of unwanted noise in retrieval (e.g. both `<!-- <!NEW FILE> -->` and `/* <!NEW FILE> */`, and other forms of comment syntax will still work). If iterating on a code repo, it's recommend to create tool(s) that either preserve or add these tags to files when done editing them, so that the next agent can reference them in the store.
+In the built-in vector store, files are split by `<!NEW FILE>` and `<!END OF FILE>` tags, respectively. These tags are added to all files in the bucket (except those listed in a .buzzignore present in the bucket directory) to be included in the vector store by default. 
+
+It's recommended to create tool(s) that preserve these tags in case some *"don't include any other details"* type prompt in the toolchain strips them out.
 
 ## Declarative Tasking
 
@@ -195,17 +197,18 @@ agent "Star Trek Wiki Site Creator" {
   }
 }
 ```
-##### Above: Custom tools can be written in Glyphic or Node.js (to which they are compiled)
+###### Above: Custom tools can be written in Glyphic or Node.js (to which they are compiled). 
 
-> [!NOTE]
-> Whatever is added to the .glyph file text is executed, even during run-time, just like an HTML web page.
+##### Glyphic 
+
+###### Glyphic is a scripting language that natively mixes logic with markup (similar to JavaScript & JSX) to enforce a more intent-driven, component-oriented, state-based paradigm that is optimized for the agentic lifecycle.
 
 ## (Meta) Contributing
 
-Buzzword can be used to contribute to itself. Have a feature you want to add or change in Buzzword? Add this repo to the bucket directory with `<!NEW FILE>`/`<!END OF FILE>` tags around relevant files, and define your task(s) and tool(s). Your agent will work tirelessly until its tasks are complete!
+Buzzword can be used to contribute to itself. Have a feature you want to add or change in Buzzword? Add this repo to your bucket and define your tasks in `agent.glyph`!
 
 -----
 
-Learn more about the Glyphic language: [Glyphic](https://github.com/bennyschmidt/glyphic)
-
 Looking for the web API & UI for Buzzword? Try [Buzzsaw](https://github.com/bennyschmidt/buzzsaw) 
+
+Learn more about the Glyphic language: [Glyphic](https://github.com/bennyschmidt/glyphic)
