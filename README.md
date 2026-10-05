@@ -6,7 +6,7 @@ LLMs can produce virtually any kind of writing: Code, documentation, articles, c
 
 ###### Above: Popular chat models are read-only with limited access to the Internet.
 
-Instead of hoping it works the first time, or arguing back-and-forth with the LLM like a maniac, you can greatly improve the quality of automated results and the size of the workload by setting up an iterative prompt pipeline that repeatedly uses the LLM with pre-defined functionality while you're away.
+Instead of having to be there, you can set up an iterative prompt pipeline that repeatedly uses the LLM while you're away.
 
 ```javascript
 
@@ -38,11 +38,11 @@ Instead of hoping it works the first time, or arguing back-and-forth with the LL
 
 ###### Above: The `Agent` class passes the prompt through a toolchain.
 
-The use of these declarative pipelines - or "tools" - is what turns a mere read-only LLM into a powerful "agent" that can read and create files, integrate them with other files and services, evaluate them for quality and correctness, and even flush the context of a previous task and load up another one - repeatedly.
+The use of these pipelines - or "tools" - is what turns a mere read-only LLM into a powerful "agent" that can read and create files, and integrate them with other services.
 
 ## Tool Chaining
 
-Any function that returns a string can be a tool. After the initial prompt and response from a model's `chat` method, instead of just returning the answer, a "toolchain" (a declarative list of functions) is invoked to augment and iteratively use the LLM - where a tool's response is passed to the subsequent tool along with contextual information about the task and query, down a "chain" or pipeline of functions that result in a final response or action.
+Any function that returns a string can be a tool. After the initial prompt and response from a model's `chat` method, instead of only returning the answer, a "toolchain" (a declarative list of functions) is invoked - each tool's response is passed to the subsequent tool along with contextual information about the task and query, down a chain of functions that result in a final response or action.
 
 ```javascript
 
@@ -71,8 +71,6 @@ Any function that returns a string can be a tool. After the initial prompt and r
 
 ###### Above: The built-in tool `GitPullRequestIntegrator` pushes a solution to a git branch.
 
-For example, the first tool in a chain might fetch time-sensitive content at the moment of invocation and produce a written report, saving it to the hard drive. Another tool might take that report and produce an HTML page from it, before passing it to a tool that pushes it to a git repo to be deployed. Another may add interactive widgets and graphics, and then open a PR for review. Tools can be chained for as long as there is iterative work to be done on a task.
-
 ```javascript
 
 const PirateStyler = (_, { currentSolution = '' }) => `SOLUTION: ${currentSolution}\n\nQUERY:Transform the solution into pirate-speak and output the entire solution only. Don't include any other details in your response.`;
@@ -86,7 +84,7 @@ A tool can be as simple or as comprehensive as you want, but typically single-pu
 
 #### Toolchain Manipulation
 
-For large tasks with many different areas of focus, entire toolchains might be ran in succession or in parallel to tackle the different aspects of work related to the overall goal. This can be accomplished by defining toolchains up-front and then creating specialty tools that swap them in, add/remove tools, restart the chain, and so-on, based on some state or event, like user (or network) input, time elapsed, the result of some prior tool in the chain, etc.
+For large tasks with many different areas of focus, entire toolchains might be ran in parallel. Define toolchains up-front and then create specialty tools that swap them in, add/remove tools, restart the chain, and so-on, based on some state or event.
 
 ```html
   <!-- A toolchain for creating Wiki style HTML pages -->
@@ -97,6 +95,7 @@ For large tasks with many different areas of focus, entire toolchains might be r
     <FileIntegrator />
   }
 ```
+
 ###### Above: `agent.glyph` is written in Glyphic (similar to JavaScript with JSX).
 
 Being able to dynamically manipulate the toolchain opens up a new tier of automation where the agent is no longer just producing text, but observing the results of its work along the way and deciding the appropriate course of action given the tools available. The more useful tools the agent has, the more useful work it can do.
@@ -108,8 +107,6 @@ The `Agent` class exposes a built-in `store` (instance of `VectorStore`), embedd
 #### File Chunking
 
 In the built-in vector store, files are split by `<!NEW FILE>` and `<!END OF FILE>` tags, respectively. These tags are added to all files in the bucket (except those listed in a .buzzignore present in the bucket directory) to be included in the vector store by default. 
-
-It's recommended to create tool(s) that preserve these tags in case some *"don't include any other details"* type prompt in the toolchain strips them out.
 
 ## Declarative Tasking
 
@@ -134,15 +131,15 @@ It's recommended to create tool(s) that preserve these tags in case some *"don't
 
 ## agent.glyph
 
-`agent.glyph` is a file that defines agentic work to be done. The two main sections needed in the `agent.glyph`:
+`agent.glyph` is a file that defines work to be done. The two main sections needed in the `agent.glyph`:
 
 • The `Toolchain`
 
-`toolchain` elements are definition blocks. Think of them like imports - they don't run the code in the `<tool />` immediately, they only define which should run (and in which order). If the file is manipulated in JavaScript during run-time, the changes will be picked up by Buzzword before the next tool invocation. If there are multiple `toolchain` blocks, they will each run the same tasks in parallel. To run in order from top-to-bottom they must be inside a parent `toolchain`. Nesting `toolchain` will effectively append the tools therein to the parent.
+`toolchain` elements are definition blocks. Think of them like imports.
 
 • The `Tasklist`
 
-`tasklist` elements, and each `<task />` therein, will run just by being present in the file. If the file is manipulated in JavaScript during run-time, the changes will be picked up by Buzzword before the next task starts. If there are multiple `tasklist` blocks, they will run in parallel. To run in order from top-to-bottom they must be inside a parent `tasklist`. Nesting `tasklist` will effectively append the tasks therein to the parent.
+`tasklist` elements, and each `<task />` therein, will run just by being present in the file. If the tasks change during run-time, the changes will be picked up by Buzzword before the next task starts. 
 
 ```javascript
 agent "Star Trek Wiki Site Creator" {
@@ -197,6 +194,7 @@ agent "Star Trek Wiki Site Creator" {
   }
 }
 ```
+
 ###### Above: Custom tools can be written in Glyphic or Node.js (to which they are compiled). 
 
 ##### Glyphic 
